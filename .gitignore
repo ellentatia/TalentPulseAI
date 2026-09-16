@@ -1,0 +1,6 @@
+# Local secrets
+docker/.env
+TalentPulseAI/.env
+
+# Build output
+TalentPulseAI/target/
