@@ -9,6 +9,7 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.step.Step;
 import org.springframework.batch.core.step.builder.StepBuilder;
@@ -26,6 +27,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 
 @Slf4j
 @Configuration
@@ -36,6 +40,7 @@ public class ResumeBatchConfig {
     private final VectorSearchService vectorSearchService;
 
     @Bean
+    @StepScope 
     public MultiResourceItemReader<Resource> pdfResourceReader() throws IOException {
         PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
         Resource[] resources = resolver.getResources("file:./uploads/resumes/*.pdf");
@@ -86,8 +91,20 @@ public class ResumeBatchConfig {
                     );
                     log.info("Stored embedding in pgvector for candidate ID: {}", saved.getId());
                 }
+
+                moveToProcessedFolder(candidate.getResumeFilePath());
             }
         };
+    }
+
+    private void moveToProcessedFolder(String resumeFilePath) throws IOException {
+        Path source = Path.of(resumeFilePath);
+        Path processedDirectory = Path.of("uploads", "processed");
+        Files.createDirectories(processedDirectory);
+        Path destination = processedDirectory.resolve(source.getFileName());
+
+        Files.move(source, destination, StandardCopyOption.REPLACE_EXISTING);
+        log.info("Moved processed resume to: {}", destination.toAbsolutePath());
     }
 
     @Bean

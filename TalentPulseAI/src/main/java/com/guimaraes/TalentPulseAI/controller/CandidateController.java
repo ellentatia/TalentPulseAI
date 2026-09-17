@@ -6,13 +6,7 @@ import java.util.UUID;
 
 import org.springframework.ai.document.Document;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import com.guimaraes.TalentPulseAI.dto.CandidateMatchResponse;
 import com.guimaraes.TalentPulseAI.dto.JobDescriptionRequest;
@@ -22,28 +16,22 @@ import com.guimaraes.TalentPulseAI.repository.CandidateRepository;
 import com.guimaraes.TalentPulseAI.repository.JobDescriptionRepository;
 import com.guimaraes.TalentPulseAI.service.VectorSearchService;
 
+import lombok.RequiredArgsConstructor;
+
 @RestController
-@RequestMapping ("api/recruiter")
+@RequestMapping("/api/recruiter")
+@RequiredArgsConstructor
 public class CandidateController {
 
     private final CandidateRepository candidateRepository;
     private final JobDescriptionRepository jobDescriptionRepository;
     private final VectorSearchService vectorSearchService;
 
-    public CandidateController(CandidateRepository candidateRepository,
-                               JobDescriptionRepository jobDescriptionRepository,
-                               VectorSearchService vectorSearchService) {
-        this.candidateRepository = candidateRepository;
-        this.jobDescriptionRepository = jobDescriptionRepository;
-        this.vectorSearchService = vectorSearchService;
-    }
-
     // 1. Manually add candidate resume and compute vector embedding
     @PostMapping("/candidates")
     public ResponseEntity<Candidate> addCandidate(@RequestBody Candidate candidate) {
         Candidate saved = candidateRepository.save(candidate);
         
-        // Store resume in PGvector store
         if (saved.getRawResumeContent() != null) {
             vectorSearchService.storeCandidateResume(saved.getId().toString(), saved.getRawResumeContent());
         }
@@ -73,7 +61,6 @@ public class CandidateController {
             if (candidateIdStr != null) {
                 UUID candidateId = UUID.fromString(candidateIdStr);
                 candidateRepository.findById(candidateId).ifPresent(c -> {
-                    // Extract similarity score if available in metadata
                     double score = doc.getMetadata().containsKey("distance") 
                             ? 1.0 - ((Number) doc.getMetadata().get("distance")).doubleValue() 
                             : 0.85;
@@ -91,5 +78,4 @@ public class CandidateController {
 
         return ResponseEntity.ok(response);
     }
-
 }

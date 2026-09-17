@@ -4,3 +4,7 @@ TalentPulseAI/.env
 
 # Build output
 TalentPulseAI/target/
+
+# Uploaded resumes
+TalentPulseAI/uploads/processed/
+TalentPulseAI/uploads/resumes/

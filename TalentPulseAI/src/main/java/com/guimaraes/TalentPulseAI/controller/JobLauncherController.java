@@ -21,7 +21,7 @@ public class JobLauncherController {
     private final JobLauncher jobLauncher;
     private final Job importResumesJob;
 
-    @PostMapping("/injest-resumes") 
+    @PostMapping("/ingest-resumes") 
     public ResponseEntity<String> triggerBatchIngestion() {
         try {
             JobParameters jobParameters = new JobParametersBuilder()

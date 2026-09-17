@@ -11,6 +11,10 @@ spring:
     password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
+  sql:
+    init:
+      mode: always
+
   jpa:
     hibernate:
       ddl-auto: update
@@ -37,11 +41,12 @@ spring:
     vectorstore:
       pgvector:
         table-name: vector_store
+        initialize-schema: true
         index-type: HNSW
         distance-type: COSINE_DISTANCE
-        dimensions: 1536
-    openai:
-      api-key: ${OPENAI_API_KEY:mock-key-for-local-testing}
+        dimensions: 1024
+    ollama:
+      base-url: http://localhost:11434
       embedding:
         options:
-          model: text-embedding-3-small
+          model: mxbai-embed-large
