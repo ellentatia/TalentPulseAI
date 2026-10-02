@@ -19,6 +19,7 @@ import org.springframework.batch.infrastructure.item.ItemProcessor;
 import org.springframework.batch.infrastructure.item.ItemWriter;
 import org.springframework.batch.infrastructure.item.file.MultiResourceItemReader;
 import org.springframework.batch.infrastructure.item.file.ResourceAwareItemReaderItemStream;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
@@ -39,11 +40,19 @@ public class ResumeBatchConfig {
     private final CandidateRepository candidateRepository;
     private final VectorSearchService vectorSearchService;
 
+    @Value("${talentpulse.resume-storage-dir:uploads/resumes}")
+    private String resumeStorageDirectory;
+
     @Bean
     @StepScope 
     public MultiResourceItemReader<Resource> pdfResourceReader() throws IOException {
         PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
-        Resource[] resources = resolver.getResources("file:./uploads/resumes/*.pdf");
+        String resourceLocation = Path.of(resumeStorageDirectory).toAbsolutePath().normalize().toUri().toString();
+        if (!resourceLocation.endsWith("/")) {
+            resourceLocation += "/";
+        }
+        String resourcePattern = resourceLocation + "*.pdf";
+        Resource[] resources = resolver.getResources(resourcePattern);
 
         MultiResourceItemReader<Resource> reader =
             new MultiResourceItemReader<>(new SingleResourcePassThroughReader());
@@ -55,8 +64,10 @@ public class ResumeBatchConfig {
     public ItemProcessor<Resource, Candidate> pdfResumeProcessor() {
         return resource -> {
             File file = resource.getFile();
-            String fileName = file.getName();
-            log.info("Processing PDF resume: {}", fileName);
+            Path resumePath = file.toPath().toAbsolutePath().normalize();
+            Candidate candidate = candidateRepository.findByResumeFilePath(resumePath.toString())
+                    .orElseThrow(() -> new IllegalStateException("No candidate record exists for staged resume"));
+            log.info("Processing resume for candidate ID: {}", candidate.getId());
 
             String rawText;
             try (PDDocument document = Loader.loadPDF(file)) {
@@ -64,16 +75,8 @@ public class ResumeBatchConfig {
                 rawText = stripper.getText(document);
             }
 
-            String candidateName = fileName.replace(".pdf", "").replace("_", " ");
-            String email = candidateName.toLowerCase().replaceAll("\\s+", ".") + "@example.com";
-
-            return new Candidate(
-                candidateName,
-                email,
-                "Unspecified",
-                rawText,
-                file.getAbsolutePath()
-            );
+            candidate.setRawResumeContent(rawText);
+            return candidate;
         };
     }
 
@@ -81,30 +84,31 @@ public class ResumeBatchConfig {
     public ItemWriter<Candidate> candidateVectorWriter() {
         return chunk -> {
             for (Candidate candidate : chunk) {
-                Candidate saved = candidateRepository.save(candidate);
-                log.info("Saved candidate to DB with ID: {}", saved.getId());
-
-                if (saved.getRawResumeContent() != null && !saved.getRawResumeContent().isBlank()) {
+                if (candidate.getRawResumeContent() != null && !candidate.getRawResumeContent().isBlank()) {
                     vectorSearchService.storeCandidateResume(
-                        saved.getId().toString(),
-                        saved.getRawResumeContent()
+                        candidate.getId().toString(),
+                        candidate.getRawResumeContent()
                     );
-                    log.info("Stored embedding in pgvector for candidate ID: {}", saved.getId());
+                    log.info("Stored embedding for candidate ID: {}", candidate.getId());
                 }
 
-                moveToProcessedFolder(candidate.getResumeFilePath());
+                Path processedPath = moveToProcessedFolder(candidate.getResumeFilePath());
+                candidate.setResumeFilePath(processedPath.toString());
+                candidate.setIngestionStatus("COMPLETED");
+                candidateRepository.save(candidate);
             }
         };
     }
 
-    private void moveToProcessedFolder(String resumeFilePath) throws IOException {
+    private Path moveToProcessedFolder(String resumeFilePath) throws IOException {
         Path source = Path.of(resumeFilePath);
-        Path processedDirectory = Path.of("uploads", "processed");
+        Path processedDirectory = source.getParent().getParent().resolve("processed");
         Files.createDirectories(processedDirectory);
         Path destination = processedDirectory.resolve(source.getFileName());
 
         Files.move(source, destination, StandardCopyOption.REPLACE_EXISTING);
-        log.info("Moved processed resume to: {}", destination.toAbsolutePath());
+        log.info("Moved processed resume: {}", destination.getFileName());
+        return destination;
     }
 
     @Bean

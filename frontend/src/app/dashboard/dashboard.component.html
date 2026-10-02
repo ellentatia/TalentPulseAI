@@ -1,0 +1,148 @@
+<div class="dashboard-container">
+  <header class="dashboard-header">
+    <h2>TalentPulseAI Recruiter Workspace</h2>
+    <p class="subtitle">AI-powered resume ingestion and semantic candidate matching</p>
+  </header>
+
+  <section class="card mb-4 shadow-sm">
+    <div class="card-header bg-dark text-white">
+      <h5 class="mb-0">Upload a Candidate Resume</h5>
+    </div>
+    <div class="card-body">
+      <form [formGroup]="candidateForm" (ngSubmit)="uploadResume(resumeFileInput)">
+        <div class="row g-3">
+          <div class="col-md-5">
+            <label class="form-label" for="candidate-name">Candidate name</label>
+            <input id="candidate-name" class="form-control" formControlName="fullName" autocomplete="name" required>
+          </div>
+          <div class="col-md-5">
+            <label class="form-label" for="candidate-email">Candidate email</label>
+            <input id="candidate-email" class="form-control" type="email" formControlName="email" autocomplete="email" required>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label" for="resume-pdf">Resume PDF</label>
+            <input #resumeFileInput id="resume-pdf" class="form-control" type="file" accept=".pdf,application/pdf" (change)="onResumeSelected($event)" required>
+          </div>
+        </div>
+        <div class="d-flex align-items-center gap-3 mt-3">
+          <button class="btn btn-primary" type="submit" [disabled]="candidateForm.invalid || !selectedResume || isUploading">
+            {{ isUploading ? 'Uploading...' : 'Upload PDF' }}
+          </button>
+          <span class="text-muted small">PDF only, maximum 10 MB. Each file is uploaded with one candidate record.</span>
+        </div>
+        <p class="mt-3 mb-0" role="status" aria-live="polite">{{ uploadMessage }}</p>
+      </form>
+    </div>
+  </section>
+
+  <section class="card mb-4 shadow-sm">
+    <div class="card-header bg-dark text-white">
+      <h5 class="mb-0">Create a Job Description</h5>
+    </div>
+    <div class="card-body">
+      <form [formGroup]="jobForm" (ngSubmit)="createJobDescription()">
+        <div class="row g-3">
+          <div class="col-md-5">
+            <label class="form-label" for="job-title">Job title</label>
+            <input id="job-title" class="form-control" formControlName="title" maxlength="160" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="job-department">Department</label>
+            <input id="job-department" class="form-control" formControlName="department" maxlength="120">
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="job-requirements">Requirements</label>
+            <textarea id="job-requirements" class="form-control" formControlName="requirements" rows="5" required></textarea>
+          </div>
+        </div>
+        <div class="d-flex align-items-center gap-3 mt-3">
+          <button class="btn btn-primary" type="submit" [disabled]="jobForm.invalid || isSavingJob()">
+            {{ isSavingJob() ? 'Saving...' : 'Save Job Description' }}
+          </button>
+          <span class="text-muted small">Saving will set the new job ID in the matching form below.</span>
+        </div>
+        <p class="mt-3 mb-0" role="status" aria-live="polite">{{ jobMessage() }}</p>
+        @if (createdJob(); as job) {
+          <p class="small mb-0 mt-2">Saved job ID: <code>{{ job.id }}</code></p>
+        }
+      </form>
+    </div>
+  </section>
+
+  <!-- Section 1: Resume Batch Ingestion -->
+  <section class="card mb-4 shadow-sm">
+    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">1. Resume Ingestion</h5>
+      <span class="badge" [ngClass]="getStatusBadgeClass()">{{ jobStatus() }}</span>
+    </div>
+    <div class="card-body">
+      <p class="text-muted">
+        Trigger Spring Batch to process uploaded PDF resumes into PostgreSQL pgvector embeddings.
+      </p>
+      <button 
+        class="btn btn-primary" 
+        (click)="triggerIngestion()" 
+        [disabled]="isJobRunning()">
+        Run Batch Ingestion Job
+      </button>
+    </div>
+  </section>
+
+  <!-- Section 2: Candidate Matching -->
+  <section class="card shadow-sm">
+    <div class="card-header bg-dark text-white">
+      <h5 class="mb-0">2. Semantic Candidate Matching</h5>
+    </div>
+    <div class="card-body">
+      <div class="row g-3 align-items-center mb-4">
+        <div class="col-md-7">
+          <label class="form-label font-weight-bold">Job Description UUID</label>
+          <input 
+            type="text" 
+            class="form-control" 
+            [formControl]="jobId" 
+            placeholder="Save a job description above or enter its UUID">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label font-weight-bold">Top K</label>
+          <input 
+            type="number" 
+            class="form-control" 
+            [(ngModel)]="topK" 
+            min="1" 
+            max="20">
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+          <button 
+            class="btn btn-success w-100" 
+            (click)="searchMatches()" 
+            [disabled]="!jobId.value.trim()">
+            Find Matching Candidates
+          </button>
+        </div>
+      </div>
+
+      <!-- Candidate Match Cards -->
+      <div *ngIf="matches$ | async as matches" class="match-results">
+        <div 
+          *ngFor="let candidate of matches" 
+          class="card mb-3 candidate-card" 
+          [ngClass]="getScoreColorClass(candidate.matchScore)">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h5 class="card-title mb-0">{{ candidate.fullName }}</h5>
+              <span class="badge bg-primary fs-6">
+                {{ (candidate.matchScore * 100) | number:'1.0-0' }}% Match
+              </span>
+            </div>
+            <p class="text-muted small mb-2">{{ candidate.email }}</p>
+            <div class="p-2 bg-light rounded text-secondary snippet-box">
+              "{{ candidate.matchingTextSnippet }}"
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</div>

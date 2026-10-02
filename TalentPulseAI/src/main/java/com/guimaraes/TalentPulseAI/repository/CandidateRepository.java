@@ -11,5 +11,7 @@ import com.guimaraes.TalentPulseAI.model.Candidate;
 @Repository 
 public interface CandidateRepository extends JpaRepository<Candidate, UUID> {
     Optional<Candidate> findByEmail(String email);
+    Optional<Candidate> findByResumeFilePath(String resumeFilePath);
+    boolean existsByEmailIgnoreCase(String email);
 
 }

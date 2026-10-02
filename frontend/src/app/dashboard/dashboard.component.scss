@@ -1,0 +1,34 @@
+.dashboard-container {
+  padding: 2rem 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.dashboard-header {
+  margin-bottom: 2rem;
+  
+  h2 {
+    font-weight: 700;
+    color: #1a202c;
+  }
+  
+  .subtitle {
+    color: #718096;
+    font-size: 1rem;
+  }
+}
+
+.candidate-card {
+  border-left-width: 6px !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+}
+
+.snippet-box {
+  font-style: italic;
+  border-left: 3px solid #cbd5e0;
+}

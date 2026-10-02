@@ -5,15 +5,19 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.ai.document.Document;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.guimaraes.TalentPulseAI.dto.CandidateMatchResponse;
 import com.guimaraes.TalentPulseAI.dto.JobDescriptionRequest;
+import com.guimaraes.TalentPulseAI.dto.ResumeUploadResponse;
 import com.guimaraes.TalentPulseAI.model.Candidate;
 import com.guimaraes.TalentPulseAI.model.JobDescription;
 import com.guimaraes.TalentPulseAI.repository.CandidateRepository;
 import com.guimaraes.TalentPulseAI.repository.JobDescriptionRepository;
+import com.guimaraes.TalentPulseAI.service.ResumeUploadService;
 import com.guimaraes.TalentPulseAI.service.VectorSearchService;
 
 import lombok.RequiredArgsConstructor;
@@ -26,6 +30,17 @@ public class CandidateController {
     private final CandidateRepository candidateRepository;
     private final JobDescriptionRepository jobDescriptionRepository;
     private final VectorSearchService vectorSearchService;
+    private final ResumeUploadService resumeUploadService;
+
+    @PostMapping(value = "/candidates/resumes", consumes = "multipart/form-data")
+    public ResponseEntity<ResumeUploadResponse> uploadResume(
+            @RequestParam("fullName") String fullName,
+            @RequestParam("email") String email,
+            @RequestParam("file") MultipartFile file) {
+        Candidate candidate = resumeUploadService.upload(fullName, email, file);
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(new ResumeUploadResponse(candidate.getId(), candidate.getIngestionStatus()));
+    }
 
     // 1. Manually add candidate resume and compute vector embedding
     @PostMapping("/candidates")

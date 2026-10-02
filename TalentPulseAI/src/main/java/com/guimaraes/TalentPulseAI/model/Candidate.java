@@ -30,7 +30,11 @@ public class Candidate {
     @Column(columnDefinition = "TEXT")
     private String rawResumeContent;
 
+    @Column(length = 1024)
     private String resumeFilePath;
+
+    @Column(length = 20)
+    private String ingestionStatus;
 
     private LocalDateTime createdAt;
 
@@ -68,6 +72,9 @@ public class Candidate {
 
     public String getResumeFilePath() { return resumeFilePath; }
     public void setResumeFilePath(String resumeFilePath) { this.resumeFilePath = resumeFilePath; }
+
+    public String getIngestionStatus() { return ingestionStatus; }
+    public void setIngestionStatus(String ingestionStatus) { this.ingestionStatus = ingestionStatus; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

@@ -5,6 +5,8 @@ TalentPulseAI/.env
 # Build output
 TalentPulseAI/target/
 
-# Uploaded resumes
-TalentPulseAI/uploads/processed/
-TalentPulseAI/uploads/resumes/
+# Uploaded resumes and processing files
+TalentPulseAI/uploads/
+
+# Personal workspace agent
+.github/agents/talentpulseai-architect.agent.md
