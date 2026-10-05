@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -72,6 +73,66 @@ class ResumeUploadServiceTests {
 
         assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
         verify(repository, never()).save(any(Candidate.class));
+        assertNoFilesWereStored();
+    }
+
+    @Test
+    void rejectsBlankCandidateNameBeforeStoringPdf() throws Exception {
+        CandidateRepository repository = mock(CandidateRepository.class);
+        ResumeUploadService service = new ResumeUploadService(repository, tempDirectory.toString());
+        MockMultipartFile pdf = pdf("resume.pdf", "%PDF-1.7\nresume".getBytes(StandardCharsets.US_ASCII));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.upload("  ", "alex@example.com", pdf));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(repository, never()).save(any(Candidate.class));
+        assertNoFilesWereStored();
+    }
+
+    @Test
+    void rejectsMalformedCandidateEmailBeforeStoringPdf() throws Exception {
+        CandidateRepository repository = mock(CandidateRepository.class);
+        ResumeUploadService service = new ResumeUploadService(repository, tempDirectory.toString());
+        MockMultipartFile pdf = pdf("resume.pdf", "%PDF-1.7\nresume".getBytes(StandardCharsets.US_ASCII));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.upload("Alex Morgan", "not-an-email", pdf));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(repository, never()).save(any(Candidate.class));
+        assertNoFilesWereStored();
+    }
+
+    @Test
+    void rejectsPdfLargerThanTenMegabytesBeforeStoringIt() throws Exception {
+        CandidateRepository repository = mock(CandidateRepository.class);
+        ResumeUploadService service = new ResumeUploadService(repository, tempDirectory.toString());
+        MockMultipartFile oversizedPdf = pdf("resume.pdf", new byte[10 * 1024 * 1024 + 1]);
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.upload("Alex Morgan", "alex@example.com", oversizedPdf));
+
+        assertEquals(HttpStatus.PAYLOAD_TOO_LARGE, exception.getStatusCode());
+        verify(repository, never()).save(any(Candidate.class));
+        assertNoFilesWereStored();
+    }
+
+    @Test
+    void removesStoredPdfWhenCandidatePersistenceFails() throws Exception {
+        CandidateRepository repository = mock(CandidateRepository.class);
+        when(repository.existsByEmailIgnoreCase("alex@example.com")).thenReturn(false);
+        doThrow(new IllegalStateException("database unavailable")).when(repository).save(any(Candidate.class));
+        ResumeUploadService service = new ResumeUploadService(repository, tempDirectory.toString());
+        MockMultipartFile pdf = pdf("resume.pdf", "%PDF-1.7\nresume".getBytes(StandardCharsets.US_ASCII));
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> service.upload("Alex Morgan", "alex@example.com", pdf));
+
         assertNoFilesWereStored();
     }
 

@@ -2,12 +2,10 @@ package com.guimaraes.TalentPulseAI.batch;
 
 import com.guimaraes.TalentPulseAI.model.Candidate;
 import com.guimaraes.TalentPulseAI.repository.CandidateRepository;
+import com.guimaraes.TalentPulseAI.service.ResumePdfTextExtractor;
 import com.guimaraes.TalentPulseAI.service.VectorSearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.Job;
@@ -39,6 +37,7 @@ public class ResumeBatchConfig {
 
     private final CandidateRepository candidateRepository;
     private final VectorSearchService vectorSearchService;
+    private final ResumePdfTextExtractor resumePdfTextExtractor;
 
     @Value("${talentpulse.resume-storage-dir:uploads/resumes}")
     private String resumeStorageDirectory;
@@ -69,13 +68,7 @@ public class ResumeBatchConfig {
                     .orElseThrow(() -> new IllegalStateException("No candidate record exists for staged resume"));
             log.info("Processing resume for candidate ID: {}", candidate.getId());
 
-            String rawText;
-            try (PDDocument document = Loader.loadPDF(file)) {
-                PDFTextStripper stripper = new PDFTextStripper();
-                rawText = stripper.getText(document);
-            }
-
-            candidate.setRawResumeContent(rawText);
+            candidate.setRawResumeContent(resumePdfTextExtractor.extractText(resumePath));
             return candidate;
         };
     }
