@@ -20,6 +20,7 @@ public class VectorSearchService {
     // Save candidate resume text into pgvector table
     public void storeCandidateResume(String candidateId, String resumeText) {
         Document document = new Document(
+            candidateId,
             resumeText,
             Map.of("candidateId", candidateId)
         );

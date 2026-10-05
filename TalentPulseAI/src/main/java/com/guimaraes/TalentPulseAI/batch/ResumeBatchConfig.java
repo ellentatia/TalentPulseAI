@@ -66,9 +66,20 @@ public class ResumeBatchConfig {
             Path resumePath = file.toPath().toAbsolutePath().normalize();
             Candidate candidate = candidateRepository.findByResumeFilePath(resumePath.toString())
                     .orElseThrow(() -> new IllegalStateException("No candidate record exists for staged resume"));
+            if ("COMPLETED".equals(candidate.getIngestionStatus())) {
+                log.info("Skipping completed resume ingestion for candidate ID: {}", candidate.getId());
+                return null;
+            }
             log.info("Processing resume for candidate ID: {}", candidate.getId());
 
-            candidate.setRawResumeContent(resumePdfTextExtractor.extractText(resumePath));
+            try {
+                candidate.setRawResumeContent(resumePdfTextExtractor.extractText(resumePath));
+                candidate.setIngestionStatus("PARSED");
+                candidate.setIngestionError(null);
+            } catch (IOException exception) {
+                markFailed(candidate, "PDF_TEXT_EXTRACTION_FAILED");
+                return null;
+            }
             return candidate;
         };
     }
@@ -77,20 +88,56 @@ public class ResumeBatchConfig {
     public ItemWriter<Candidate> candidateVectorWriter() {
         return chunk -> {
             for (Candidate candidate : chunk) {
-                if (candidate.getRawResumeContent() != null && !candidate.getRawResumeContent().isBlank()) {
+                if (candidate.getRawResumeContent() == null || candidate.getRawResumeContent().isBlank()) {
+                    markFailed(candidate, "PDF_TEXT_EXTRACTION_FAILED");
+                    continue;
+                }
+
+                try {
                     vectorSearchService.storeCandidateResume(
                         candidate.getId().toString(),
                         candidate.getRawResumeContent()
                     );
                     log.info("Stored embedding for candidate ID: {}", candidate.getId());
+                } catch (RuntimeException exception) {
+                    markFailed(candidate, "VECTOR_INDEXING_FAILED");
+                    continue;
                 }
 
-                Path processedPath = moveToProcessedFolder(candidate.getResumeFilePath());
-                candidate.setResumeFilePath(processedPath.toString());
-                candidate.setIngestionStatus("COMPLETED");
-                candidateRepository.save(candidate);
+                Path sourcePath = Path.of(candidate.getResumeFilePath());
+                Path processedPath;
+                try {
+                    processedPath = moveToProcessedFolder(candidate.getResumeFilePath());
+                    candidate.setResumeFilePath(processedPath.toString());
+                    candidate.setIngestionStatus("COMPLETED");
+                    candidate.setIngestionError(null);
+                } catch (IOException exception) {
+                    markFailed(candidate, "FILE_FINALIZATION_FAILED");
+                    continue;
+                }
+
+                try {
+                    candidateRepository.save(candidate);
+                } catch (RuntimeException exception) {
+                    candidate.setResumeFilePath(sourcePath.toString());
+                    candidate.setIngestionStatus("PARSED");
+                    candidate.setIngestionError("CANDIDATE_PERSISTENCE_FAILED");
+                    try {
+                        Files.move(processedPath, sourcePath, StandardCopyOption.REPLACE_EXISTING);
+                    } catch (IOException rollbackException) {
+                        exception.addSuppressed(rollbackException);
+                    }
+                    throw exception;
+                }
             }
         };
+    }
+
+    private void markFailed(Candidate candidate, String errorCode) {
+        candidate.setIngestionStatus("FAILED");
+        candidate.setIngestionError(errorCode);
+        candidateRepository.save(candidate);
+        log.error("Resume ingestion failed for candidate ID {}: {}", candidate.getId(), errorCode);
     }
 
     private Path moveToProcessedFolder(String resumeFilePath) throws IOException {

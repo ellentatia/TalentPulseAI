@@ -1,13 +1,19 @@
 package com.guimaraes.TalentPulseAI.batch;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.UUID;
 
 import com.guimaraes.TalentPulseAI.model.Candidate;
 import com.guimaraes.TalentPulseAI.repository.CandidateRepository;
@@ -15,7 +21,9 @@ import com.guimaraes.TalentPulseAI.service.ResumePdfTextExtractor;
 import com.guimaraes.TalentPulseAI.service.VectorSearchService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.batch.infrastructure.item.Chunk;
 import org.springframework.batch.infrastructure.item.ItemProcessor;
+import org.springframework.batch.infrastructure.item.ItemWriter;
 import org.springframework.core.io.FileSystemResource;
 
 class ResumeBatchConfigTests {
@@ -41,6 +49,132 @@ class ResumeBatchConfigTests {
         Candidate processed = processor.process(new FileSystemResource(resumePath));
 
         assertEquals("Extracted resume text", processed.getRawResumeContent());
+        assertEquals("PARSED", processed.getIngestionStatus());
         verify(extractor).extractText(resumePath.toAbsolutePath().normalize());
+    }
+
+    @Test
+    void processorSkipsCompletedCandidateWithoutReindexing() throws Exception {
+        Path resumePath = tempDirectory.resolve("completed.pdf");
+        java.nio.file.Files.createFile(resumePath);
+        Candidate candidate = new Candidate("Alex Morgan", "alex@example.com", null, null, resumePath.toString());
+        candidate.setIngestionStatus("COMPLETED");
+        CandidateRepository candidateRepository = mock(CandidateRepository.class);
+        ResumePdfTextExtractor extractor = mock(ResumePdfTextExtractor.class);
+        when(candidateRepository.findByResumeFilePath(resumePath.toAbsolutePath().normalize().toString()))
+                .thenReturn(Optional.of(candidate));
+        ResumeBatchConfig config = new ResumeBatchConfig(
+                candidateRepository, mock(VectorSearchService.class), extractor);
+
+        Candidate processed = config.pdfResumeProcessor().process(new FileSystemResource(resumePath));
+
+        assertNull(processed);
+        verify(extractor, never()).extractText(any(Path.class));
+    }
+
+    @Test
+    void processorPersistsFailureStateWhenPdfTextCannotBeExtracted() throws Exception {
+        Path resumePath = tempDirectory.resolve("invalid.pdf");
+        java.nio.file.Files.createFile(resumePath);
+        Candidate candidate = new Candidate("Alex Morgan", "alex@example.com", null, null, resumePath.toString());
+        CandidateRepository candidateRepository = mock(CandidateRepository.class);
+        ResumePdfTextExtractor extractor = mock(ResumePdfTextExtractor.class);
+        when(candidateRepository.findByResumeFilePath(resumePath.toAbsolutePath().normalize().toString()))
+                .thenReturn(Optional.of(candidate));
+        when(extractor.extractText(resumePath.toAbsolutePath().normalize()))
+                .thenThrow(new IOException("invalid PDF"));
+        ResumeBatchConfig config = new ResumeBatchConfig(
+                candidateRepository, mock(VectorSearchService.class), extractor);
+
+        Candidate processed = config.pdfResumeProcessor().process(new FileSystemResource(resumePath));
+
+        assertNull(processed);
+        assertEquals("FAILED", candidate.getIngestionStatus());
+        assertEquals("PDF_TEXT_EXTRACTION_FAILED", candidate.getIngestionError());
+        verify(candidateRepository).save(candidate);
+    }
+
+    @Test
+    void writerMarksIndexingFailureAndLeavesResumeAvailableForRetry() throws Exception {
+        Path resumeDirectory = tempDirectory.resolve("resumes");
+        java.nio.file.Files.createDirectories(resumeDirectory);
+        Path resumePath = resumeDirectory.resolve("resume.pdf");
+        java.nio.file.Files.createFile(resumePath);
+        Candidate candidate = new Candidate("Alex Morgan", "alex@example.com", null, "Resume text", resumePath.toString());
+        candidate.setId(UUID.randomUUID());
+        candidate.setIngestionStatus("PARSED");
+        VectorSearchService vectorSearchService = mock(VectorSearchService.class);
+        doThrow(new IllegalStateException("vector store unavailable"))
+                .when(vectorSearchService).storeCandidateResume(candidate.getId().toString(), "Resume text");
+        CandidateRepository candidateRepository = mock(CandidateRepository.class);
+        ResumeBatchConfig config = new ResumeBatchConfig(
+                candidateRepository, vectorSearchService, mock(ResumePdfTextExtractor.class));
+        ItemWriter<Candidate> writer = config.candidateVectorWriter();
+        Chunk<Candidate> chunk = new Chunk<>();
+        chunk.add(candidate);
+
+        writer.write(chunk);
+
+        assertEquals("FAILED", candidate.getIngestionStatus());
+        assertEquals("VECTOR_INDEXING_FAILED", candidate.getIngestionError());
+        assertEquals(resumePath.toString(), candidate.getResumeFilePath());
+        org.junit.jupiter.api.Assertions.assertTrue(java.nio.file.Files.exists(resumePath));
+        verify(candidateRepository).save(candidate);
+    }
+
+    @Test
+    void writerMovesSuccessfullyIndexedResumeAndMarksCandidateCompleted() throws Exception {
+        Path resumeDirectory = tempDirectory.resolve("uploads").resolve("resumes");
+        java.nio.file.Files.createDirectories(resumeDirectory);
+        Path resumePath = resumeDirectory.resolve("resume.pdf");
+        java.nio.file.Files.createFile(resumePath);
+        Candidate candidate = new Candidate("Alex Morgan", "alex@example.com", null, "Resume text", resumePath.toString());
+        candidate.setId(UUID.randomUUID());
+        candidate.setIngestionStatus("PARSED");
+        CandidateRepository candidateRepository = mock(CandidateRepository.class);
+        VectorSearchService vectorSearchService = mock(VectorSearchService.class);
+        ResumeBatchConfig config = new ResumeBatchConfig(
+                candidateRepository, vectorSearchService, mock(ResumePdfTextExtractor.class));
+        Chunk<Candidate> chunk = new Chunk<>();
+        chunk.add(candidate);
+
+        config.candidateVectorWriter().write(chunk);
+
+        Path processedPath = tempDirectory.resolve("uploads").resolve("processed").resolve("resume.pdf");
+        assertEquals("COMPLETED", candidate.getIngestionStatus());
+        assertEquals(processedPath.toString(), candidate.getResumeFilePath());
+        org.junit.jupiter.api.Assertions.assertTrue(java.nio.file.Files.exists(processedPath));
+        org.junit.jupiter.api.Assertions.assertFalse(java.nio.file.Files.exists(resumePath));
+        verify(vectorSearchService).storeCandidateResume(candidate.getId().toString(), "Resume text");
+        verify(candidateRepository).save(candidate);
+    }
+
+    @Test
+    void writerRestoresResumeIfCandidateCompletionCannotBeSaved() throws Exception {
+        Path resumeDirectory = tempDirectory.resolve("uploads").resolve("resumes");
+        java.nio.file.Files.createDirectories(resumeDirectory);
+        Path resumePath = resumeDirectory.resolve("resume.pdf");
+        java.nio.file.Files.createFile(resumePath);
+        Candidate candidate = new Candidate("Alex Morgan", "alex@example.com", null, "Resume text", resumePath.toString());
+        candidate.setId(UUID.randomUUID());
+        candidate.setIngestionStatus("PARSED");
+        CandidateRepository candidateRepository = mock(CandidateRepository.class);
+        doThrow(new IllegalStateException("database unavailable")).when(candidateRepository).save(candidate);
+        VectorSearchService vectorSearchService = mock(VectorSearchService.class);
+        ResumeBatchConfig config = new ResumeBatchConfig(
+                candidateRepository, vectorSearchService, mock(ResumePdfTextExtractor.class));
+        Chunk<Candidate> chunk = new Chunk<>();
+        chunk.add(candidate);
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalStateException.class,
+                () -> config.candidateVectorWriter().write(chunk));
+
+        assertEquals(resumePath.toString(), candidate.getResumeFilePath());
+        assertEquals("PARSED", candidate.getIngestionStatus());
+        org.junit.jupiter.api.Assertions.assertTrue(java.nio.file.Files.exists(resumePath));
+        org.junit.jupiter.api.Assertions.assertFalse(
+                java.nio.file.Files.exists(tempDirectory.resolve("uploads").resolve("processed").resolve("resume.pdf")));
+        verify(vectorSearchService).storeCandidateResume(candidate.getId().toString(), "Resume text");
     }
 }

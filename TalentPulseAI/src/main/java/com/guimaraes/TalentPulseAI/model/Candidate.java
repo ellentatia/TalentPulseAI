@@ -36,6 +36,9 @@ public class Candidate {
     @Column(length = 20)
     private String ingestionStatus;
 
+    @Column(length = 100)
+    private String ingestionError;
+
     private LocalDateTime createdAt;
 
     @PrePersist 
@@ -75,6 +78,9 @@ public class Candidate {
 
     public String getIngestionStatus() { return ingestionStatus; }
     public void setIngestionStatus(String ingestionStatus) { this.ingestionStatus = ingestionStatus; }
+
+    public String getIngestionError() { return ingestionError; }
+    public void setIngestionError(String ingestionError) { this.ingestionError = ingestionError; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
