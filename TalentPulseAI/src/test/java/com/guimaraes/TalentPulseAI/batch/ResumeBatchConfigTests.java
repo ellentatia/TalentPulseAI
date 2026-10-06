@@ -2,22 +2,27 @@ package com.guimaraes.TalentPulseAI.batch;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentCaptor.forClass;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import com.guimaraes.TalentPulseAI.model.Candidate;
+import com.guimaraes.TalentPulseAI.model.CandidateProfile;
+import com.guimaraes.TalentPulseAI.repository.CandidateProfileRepository;
 import com.guimaraes.TalentPulseAI.repository.CandidateRepository;
 import com.guimaraes.TalentPulseAI.service.ResumePdfTextExtractor;
+import com.guimaraes.TalentPulseAI.service.ResumeParsingService;
+import com.guimaraes.TalentPulseAI.service.SkillExtractionService;
 import com.guimaraes.TalentPulseAI.service.VectorSearchService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -36,20 +41,34 @@ class ResumeBatchConfigTests {
         Path resumePath = tempDirectory.resolve("resume.pdf");
         java.nio.file.Files.createFile(resumePath);
         Candidate candidate = new Candidate("Alex Morgan", "alex@example.com", null, null, resumePath.toString());
+        candidate.setId(UUID.randomUUID());
         CandidateRepository candidateRepository = mock(CandidateRepository.class);
+        CandidateProfileRepository profileRepository = mock(CandidateProfileRepository.class);
         VectorSearchService vectorSearchService = mock(VectorSearchService.class);
         ResumePdfTextExtractor extractor = mock(ResumePdfTextExtractor.class);
+        when(profileRepository.findByCandidate_Id(candidate.getId())).thenReturn(Optional.empty());
+        when(profileRepository.save(any(CandidateProfile.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(candidateRepository.findByResumeFilePath(resumePath.toAbsolutePath().normalize().toString()))
                 .thenReturn(Optional.of(candidate));
-        when(extractor.extractText(resumePath.toAbsolutePath().normalize())).thenReturn("Extracted resume text");
+        when(extractor.extractText(resumePath.toAbsolutePath().normalize())).thenReturn("""
+                Summary: Patient care professional with 4 years of experience.
+                Job Title: Medical Assistant
+                Skills: EHR and patient care
+                """);
 
-        ResumeBatchConfig config = new ResumeBatchConfig(candidateRepository, vectorSearchService, extractor);
+        ResumeBatchConfig config = createConfig(candidateRepository, profileRepository, vectorSearchService, extractor);
         ItemProcessor<org.springframework.core.io.Resource, Candidate> processor = config.pdfResumeProcessor();
 
         Candidate processed = processor.process(new FileSystemResource(resumePath));
 
-        assertEquals("Extracted resume text", processed.getRawResumeContent());
+        assertEquals("Summary: Patient care professional with 4 years of experience.\n"
+                + "Job Title: Medical Assistant\nSkills: EHR and patient care\n", processed.getRawResumeContent());
         assertEquals("PARSED", processed.getIngestionStatus());
+        var profileCaptor = forClass(CandidateProfile.class);
+        verify(profileRepository).save(profileCaptor.capture());
+        assertEquals(4, profileCaptor.getValue().getYearsOfExperience());
+        assertEquals(List.of("ehr", "patient care"), profileCaptor.getValue().getSkills());
+        assertEquals(List.of("Medical Assistant"), profileCaptor.getValue().getJobTitles());
         verify(extractor).extractText(resumePath.toAbsolutePath().normalize());
     }
 
@@ -63,8 +82,8 @@ class ResumeBatchConfigTests {
         ResumePdfTextExtractor extractor = mock(ResumePdfTextExtractor.class);
         when(candidateRepository.findByResumeFilePath(resumePath.toAbsolutePath().normalize().toString()))
                 .thenReturn(Optional.of(candidate));
-        ResumeBatchConfig config = new ResumeBatchConfig(
-                candidateRepository, mock(VectorSearchService.class), extractor);
+        ResumeBatchConfig config = createConfig(
+                candidateRepository, mock(CandidateProfileRepository.class), mock(VectorSearchService.class), extractor);
 
         Candidate processed = config.pdfResumeProcessor().process(new FileSystemResource(resumePath));
 
@@ -83,14 +102,40 @@ class ResumeBatchConfigTests {
                 .thenReturn(Optional.of(candidate));
         when(extractor.extractText(resumePath.toAbsolutePath().normalize()))
                 .thenThrow(new IOException("invalid PDF"));
-        ResumeBatchConfig config = new ResumeBatchConfig(
-                candidateRepository, mock(VectorSearchService.class), extractor);
+        ResumeBatchConfig config = createConfig(
+                candidateRepository, mock(CandidateProfileRepository.class), mock(VectorSearchService.class), extractor);
 
         Candidate processed = config.pdfResumeProcessor().process(new FileSystemResource(resumePath));
 
         assertNull(processed);
         assertEquals("FAILED", candidate.getIngestionStatus());
         assertEquals("PDF_TEXT_EXTRACTION_FAILED", candidate.getIngestionError());
+        verify(candidateRepository).save(candidate);
+    }
+
+    @Test
+    void processorMarksCandidateFailedWhenProfileCannotBePersisted() throws Exception {
+        Path resumePath = tempDirectory.resolve("profile-failure.pdf");
+        java.nio.file.Files.createFile(resumePath);
+        Candidate candidate = new Candidate("Alex Morgan", "alex@example.com", null, null, resumePath.toString());
+        candidate.setId(UUID.randomUUID());
+        CandidateRepository candidateRepository = mock(CandidateRepository.class);
+        CandidateProfileRepository profileRepository = mock(CandidateProfileRepository.class);
+        ResumePdfTextExtractor extractor = mock(ResumePdfTextExtractor.class);
+        when(candidateRepository.findByResumeFilePath(resumePath.toAbsolutePath().normalize().toString()))
+                .thenReturn(Optional.of(candidate));
+        when(extractor.extractText(resumePath.toAbsolutePath().normalize())).thenReturn("Patient care");
+        when(profileRepository.findByCandidate_Id(candidate.getId())).thenReturn(Optional.empty());
+        when(profileRepository.save(any(CandidateProfile.class)))
+                .thenThrow(new IllegalStateException("database unavailable"));
+        ResumeBatchConfig config = createConfig(
+                candidateRepository, profileRepository, mock(VectorSearchService.class), extractor);
+
+        Candidate processed = config.pdfResumeProcessor().process(new FileSystemResource(resumePath));
+
+        assertNull(processed);
+        assertEquals("FAILED", candidate.getIngestionStatus());
+        assertEquals("PROFILE_PERSISTENCE_FAILED", candidate.getIngestionError());
         verify(candidateRepository).save(candidate);
     }
 
@@ -107,8 +152,9 @@ class ResumeBatchConfigTests {
         doThrow(new IllegalStateException("vector store unavailable"))
                 .when(vectorSearchService).storeCandidateResume(candidate.getId().toString(), "Resume text");
         CandidateRepository candidateRepository = mock(CandidateRepository.class);
-        ResumeBatchConfig config = new ResumeBatchConfig(
-                candidateRepository, vectorSearchService, mock(ResumePdfTextExtractor.class));
+        ResumeBatchConfig config = createConfig(
+                candidateRepository, mock(CandidateProfileRepository.class),
+                vectorSearchService, mock(ResumePdfTextExtractor.class));
         ItemWriter<Candidate> writer = config.candidateVectorWriter();
         Chunk<Candidate> chunk = new Chunk<>();
         chunk.add(candidate);
@@ -133,8 +179,9 @@ class ResumeBatchConfigTests {
         candidate.setIngestionStatus("PARSED");
         CandidateRepository candidateRepository = mock(CandidateRepository.class);
         VectorSearchService vectorSearchService = mock(VectorSearchService.class);
-        ResumeBatchConfig config = new ResumeBatchConfig(
-                candidateRepository, vectorSearchService, mock(ResumePdfTextExtractor.class));
+        ResumeBatchConfig config = createConfig(
+                candidateRepository, mock(CandidateProfileRepository.class),
+                vectorSearchService, mock(ResumePdfTextExtractor.class));
         Chunk<Candidate> chunk = new Chunk<>();
         chunk.add(candidate);
 
@@ -161,8 +208,9 @@ class ResumeBatchConfigTests {
         CandidateRepository candidateRepository = mock(CandidateRepository.class);
         doThrow(new IllegalStateException("database unavailable")).when(candidateRepository).save(candidate);
         VectorSearchService vectorSearchService = mock(VectorSearchService.class);
-        ResumeBatchConfig config = new ResumeBatchConfig(
-                candidateRepository, vectorSearchService, mock(ResumePdfTextExtractor.class));
+        ResumeBatchConfig config = createConfig(
+                candidateRepository, mock(CandidateProfileRepository.class),
+                vectorSearchService, mock(ResumePdfTextExtractor.class));
         Chunk<Candidate> chunk = new Chunk<>();
         chunk.add(candidate);
 
@@ -176,5 +224,18 @@ class ResumeBatchConfigTests {
         org.junit.jupiter.api.Assertions.assertFalse(
                 java.nio.file.Files.exists(tempDirectory.resolve("uploads").resolve("processed").resolve("resume.pdf")));
         verify(vectorSearchService).storeCandidateResume(candidate.getId().toString(), "Resume text");
+    }
+
+    private ResumeBatchConfig createConfig(
+            CandidateRepository candidateRepository,
+            CandidateProfileRepository profileRepository,
+            VectorSearchService vectorSearchService,
+            ResumePdfTextExtractor extractor) {
+        return new ResumeBatchConfig(
+                candidateRepository,
+                profileRepository,
+                vectorSearchService,
+                extractor,
+                new ResumeParsingService(new SkillExtractionService()));
     }
 }

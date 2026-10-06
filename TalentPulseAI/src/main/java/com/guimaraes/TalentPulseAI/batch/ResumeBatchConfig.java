@@ -1,8 +1,11 @@
 package com.guimaraes.TalentPulseAI.batch;
 
 import com.guimaraes.TalentPulseAI.model.Candidate;
+import com.guimaraes.TalentPulseAI.model.CandidateProfile;
 import com.guimaraes.TalentPulseAI.repository.CandidateRepository;
+import com.guimaraes.TalentPulseAI.repository.CandidateProfileRepository;
 import com.guimaraes.TalentPulseAI.service.ResumePdfTextExtractor;
+import com.guimaraes.TalentPulseAI.service.ResumeParsingService;
 import com.guimaraes.TalentPulseAI.service.VectorSearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,8 +39,10 @@ import java.nio.file.StandardCopyOption;
 public class ResumeBatchConfig {
 
     private final CandidateRepository candidateRepository;
+    private final CandidateProfileRepository candidateProfileRepository;
     private final VectorSearchService vectorSearchService;
     private final ResumePdfTextExtractor resumePdfTextExtractor;
+    private final ResumeParsingService resumeParsingService;
 
     @Value("${talentpulse.resume-storage-dir:uploads/resumes}")
     private String resumeStorageDirectory;
@@ -74,12 +79,35 @@ public class ResumeBatchConfig {
 
             try {
                 candidate.setRawResumeContent(resumePdfTextExtractor.extractText(resumePath));
-                candidate.setIngestionStatus("PARSED");
-                candidate.setIngestionError(null);
             } catch (IOException exception) {
                 markFailed(candidate, "PDF_TEXT_EXTRACTION_FAILED");
                 return null;
             }
+
+            CandidateProfile parsedProfile;
+            try {
+                parsedProfile = resumeParsingService.parse(candidate.getRawResumeContent(), candidate);
+            } catch (RuntimeException exception) {
+                markFailed(candidate, "PROFILE_EXTRACTION_FAILED");
+                return null;
+            }
+
+            try {
+                CandidateProfile profile = candidateProfileRepository.findByCandidate_Id(candidate.getId())
+                        .orElseGet(() -> new CandidateProfile(candidate));
+                profile.setSummary(parsedProfile.getSummary());
+                profile.setYearsOfExperience(parsedProfile.getYearsOfExperience());
+                profile.setSkills(parsedProfile.getSkills());
+                profile.setJobTitles(parsedProfile.getJobTitles());
+                profile.setEducation(parsedProfile.getEducation());
+                profile.setLocations(parsedProfile.getLocations());
+                candidateProfileRepository.save(profile);
+            } catch (RuntimeException exception) {
+                markFailed(candidate, "PROFILE_PERSISTENCE_FAILED");
+                return null;
+            }
+            candidate.setIngestionStatus("PARSED");
+            candidate.setIngestionError(null);
             return candidate;
         };
     }

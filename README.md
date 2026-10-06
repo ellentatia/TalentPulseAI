@@ -20,6 +20,9 @@ and trying the synthetic-data workflow.
 - `tools/verify.go` — local test/build pipeline and separate backend/frontend
   run modes.
 
+See [the candidate data model](docs/candidate-data-model.md) for how normalized
+profile data is stored separately from source resume content.
+
 ## Checks
 
 From the repository root, run the full test and build pipeline:
