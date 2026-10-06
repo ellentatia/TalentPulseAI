@@ -15,7 +15,8 @@ function initializeKeycloak(keycloak: KeycloakService) {
         clientId: environment.keycloak.clientId         // Your Keycloak client ID
       },
       initOptions: {
-        onLoad: 'login-required'
+        onLoad: 'login-required',
+        pkceMethod: 'S256'
       },
       enableBearerInterceptor: true,
       bearerPrefix: 'Bearer'
