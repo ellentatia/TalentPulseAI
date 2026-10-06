@@ -116,15 +116,22 @@ public class ResumeBatchConfig {
     public ItemWriter<Candidate> candidateVectorWriter() {
         return chunk -> {
             for (Candidate candidate : chunk) {
-                if (candidate.getRawResumeContent() == null || candidate.getRawResumeContent().isBlank()) {
-                    markFailed(candidate, "PDF_TEXT_EXTRACTION_FAILED");
+                CandidateProfile profile;
+                try {
+                    profile = candidateProfileRepository.findByCandidate_Id(candidate.getId()).orElse(null);
+                } catch (RuntimeException exception) {
+                    markFailed(candidate, "PROFILE_LOOKUP_FAILED");
+                    continue;
+                }
+                if (profile == null) {
+                    markFailed(candidate, "CANDIDATE_PROFILE_NOT_FOUND");
                     continue;
                 }
 
                 try {
-                    vectorSearchService.storeCandidateResume(
+                    vectorSearchService.storeCandidateProfile(
                         candidate.getId().toString(),
-                        candidate.getRawResumeContent()
+                        profile
                     );
                     log.info("Stored embedding for candidate ID: {}", candidate.getId());
                 } catch (RuntimeException exception) {

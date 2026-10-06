@@ -27,9 +27,12 @@ import com.guimaraes.TalentPulseAI.dto.JobDescriptionRequest;
 import com.guimaraes.TalentPulseAI.dto.JobDescriptionResponse;
 import com.guimaraes.TalentPulseAI.dto.ResumeUploadResponse;
 import com.guimaraes.TalentPulseAI.model.Candidate;
+import com.guimaraes.TalentPulseAI.model.CandidateProfile;
 import com.guimaraes.TalentPulseAI.model.JobDescription;
+import com.guimaraes.TalentPulseAI.repository.CandidateProfileRepository;
 import com.guimaraes.TalentPulseAI.repository.CandidateRepository;
 import com.guimaraes.TalentPulseAI.repository.JobDescriptionRepository;
+import com.guimaraes.TalentPulseAI.service.ResumeParsingService;
 import com.guimaraes.TalentPulseAI.service.ResumeUploadService;
 import com.guimaraes.TalentPulseAI.service.VectorSearchService;
 
@@ -49,8 +52,10 @@ public class CandidateController {
             Pattern.compile("(?<!\\w)\\+?\\d[\\d\\s().-]{7,}\\d(?!\\w)");
 
     private final CandidateRepository candidateRepository;
+    private final CandidateProfileRepository candidateProfileRepository;
     private final JobDescriptionRepository jobDescriptionRepository;
     private final VectorSearchService vectorSearchService;
+    private final ResumeParsingService resumeParsingService;
     private final ResumeUploadService resumeUploadService;
 
     @PostMapping(value = "/candidates/resumes", consumes = "multipart/form-data")
@@ -85,18 +90,39 @@ public class CandidateController {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A candidate with this email already exists");
         }
 
+        CandidateProfile profile;
         try {
-            vectorSearchService.storeCandidateResume(saved.getId().toString(), saved.getRawResumeContent());
-            saved.setIngestionStatus("COMPLETED");
-            saved.setIngestionError(null);
-            return ResponseEntity.status(HttpStatus.CREATED).body(toCandidateResponse(candidateRepository.save(saved)));
+            profile = resumeParsingService.parse(saved.getRawResumeContent(), saved);
+        } catch (RuntimeException exception) {
+            saved.setIngestionStatus("FAILED");
+            saved.setIngestionError("PROFILE_EXTRACTION_FAILED");
+            candidateRepository.save(saved);
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR, "Unable to extract candidate profile");
+        }
+
+        try {
+            candidateProfileRepository.save(profile);
+        } catch (RuntimeException exception) {
+            saved.setIngestionStatus("FAILED");
+            saved.setIngestionError("PROFILE_PERSISTENCE_FAILED");
+            candidateRepository.save(saved);
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR, "Unable to save candidate profile");
+        }
+
+        try {
+            vectorSearchService.storeCandidateProfile(saved.getId().toString(), profile);
         } catch (RuntimeException exception) {
             saved.setIngestionStatus("FAILED");
             saved.setIngestionError("VECTOR_INDEXING_FAILED");
             candidateRepository.save(saved);
             throw new ResponseStatusException(
-                    HttpStatus.INTERNAL_SERVER_ERROR, "Unable to index candidate resume");
+                    HttpStatus.INTERNAL_SERVER_ERROR, "Unable to index candidate profile");
         }
+        saved.setIngestionStatus("COMPLETED");
+        saved.setIngestionError(null);
+        return ResponseEntity.status(HttpStatus.CREATED).body(toCandidateResponse(candidateRepository.save(saved)));
     }
 
     @GetMapping("/candidates")

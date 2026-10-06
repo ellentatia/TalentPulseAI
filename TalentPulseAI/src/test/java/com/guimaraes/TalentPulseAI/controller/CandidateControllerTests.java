@@ -1,6 +1,7 @@
 package com.guimaraes.TalentPulseAI.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -16,9 +17,12 @@ import java.util.UUID;
 
 import com.guimaraes.TalentPulseAI.config.SecurityConfig;
 import com.guimaraes.TalentPulseAI.model.Candidate;
+import com.guimaraes.TalentPulseAI.model.CandidateProfile;
 import com.guimaraes.TalentPulseAI.model.JobDescription;
+import com.guimaraes.TalentPulseAI.repository.CandidateProfileRepository;
 import com.guimaraes.TalentPulseAI.repository.CandidateRepository;
 import com.guimaraes.TalentPulseAI.repository.JobDescriptionRepository;
+import com.guimaraes.TalentPulseAI.service.ResumeParsingService;
 import com.guimaraes.TalentPulseAI.service.ResumeUploadService;
 import com.guimaraes.TalentPulseAI.service.VectorSearchService;
 import org.junit.jupiter.api.Test;
@@ -41,10 +45,16 @@ class CandidateControllerTests {
     private CandidateRepository candidateRepository;
 
     @MockitoBean
+    private CandidateProfileRepository candidateProfileRepository;
+
+    @MockitoBean
     private JobDescriptionRepository jobDescriptionRepository;
 
     @MockitoBean
     private VectorSearchService vectorSearchService;
+
+    @MockitoBean
+    private ResumeParsingService resumeParsingService;
 
     @MockitoBean
     private ResumeUploadService resumeUploadService;
@@ -90,6 +100,39 @@ class CandidateControllerTests {
                 .andExpect(status().isBadRequest());
 
         verify(jobDescriptionRepository, never()).save(any(JobDescription.class));
+    }
+
+    @Test
+    void manualCandidateCreationPersistsAndIndexesTheParsedProfile() throws Exception {
+        UUID candidateId = UUID.randomUUID();
+        when(candidateRepository.existsByEmailIgnoreCase("alex@example.com")).thenReturn(false);
+        when(candidateRepository.save(any(Candidate.class))).thenAnswer(invocation -> {
+            Candidate candidate = invocation.getArgument(0);
+            candidate.setId(candidateId);
+            return candidate;
+        });
+        when(resumeParsingService.parse(any(), any())).thenAnswer(invocation ->
+                new CandidateProfile(invocation.getArgument(1)));
+
+        mockMvc.perform(post("/api/recruiter/candidates")
+                        .with(user("recruiter").roles("RECRUITER"))
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "fullName": "Alex Morgan",
+                                  "email": "alex@example.com",
+                                  "resumeContent": "Skills: patient care"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.candidateId").value(candidateId.toString()))
+                .andExpect(jsonPath("$.ingestionStatus").value("COMPLETED"))
+                .andExpect(jsonPath("$.rawResumeContent").doesNotExist());
+
+        verify(resumeParsingService).parse(eq("Skills: patient care"), any(Candidate.class));
+        verify(candidateProfileRepository).save(any(CandidateProfile.class));
+        verify(vectorSearchService).storeCandidateProfile(
+                org.mockito.ArgumentMatchers.eq(candidateId.toString()), any(CandidateProfile.class));
     }
 
     @Test

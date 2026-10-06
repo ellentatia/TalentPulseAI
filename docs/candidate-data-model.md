@@ -22,3 +22,11 @@ that map only normalizes known synonyms to a shared label. The parser does not
 infer experience from employment dates. Existing candidate API responses
 remain unchanged and do not include raw resume text, profile internals, or
 storage paths.
+
+Vector documents use the candidate UUID as their ID and contain labeled,
+searchable profile fields only; candidate identity and source resume text are
+not embedded by the resume-ingestion flow. Spring AI's PostgreSQL vector store
+uses `ON CONFLICT (id) DO UPDATE`, so re-indexing a changed profile replaces
+the existing document instead of creating a duplicate. Missing profiles and
+indexing errors leave the staged resume available for retry and mark ingestion
+as failed.

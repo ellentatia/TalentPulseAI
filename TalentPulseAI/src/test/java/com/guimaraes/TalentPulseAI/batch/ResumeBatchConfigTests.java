@@ -148,12 +148,15 @@ class ResumeBatchConfigTests {
         Candidate candidate = new Candidate("Alex Morgan", "alex@example.com", null, "Resume text", resumePath.toString());
         candidate.setId(UUID.randomUUID());
         candidate.setIngestionStatus("PARSED");
+        CandidateProfile profile = searchableProfile(candidate);
+        CandidateProfileRepository profileRepository = mock(CandidateProfileRepository.class);
+        when(profileRepository.findByCandidate_Id(candidate.getId())).thenReturn(Optional.of(profile));
         VectorSearchService vectorSearchService = mock(VectorSearchService.class);
         doThrow(new IllegalStateException("vector store unavailable"))
-                .when(vectorSearchService).storeCandidateResume(candidate.getId().toString(), "Resume text");
+                .when(vectorSearchService).storeCandidateProfile(candidate.getId().toString(), profile);
         CandidateRepository candidateRepository = mock(CandidateRepository.class);
         ResumeBatchConfig config = createConfig(
-                candidateRepository, mock(CandidateProfileRepository.class),
+                candidateRepository, profileRepository,
                 vectorSearchService, mock(ResumePdfTextExtractor.class));
         ItemWriter<Candidate> writer = config.candidateVectorWriter();
         Chunk<Candidate> chunk = new Chunk<>();
@@ -178,9 +181,12 @@ class ResumeBatchConfigTests {
         candidate.setId(UUID.randomUUID());
         candidate.setIngestionStatus("PARSED");
         CandidateRepository candidateRepository = mock(CandidateRepository.class);
+        CandidateProfile profile = searchableProfile(candidate);
+        CandidateProfileRepository profileRepository = mock(CandidateProfileRepository.class);
+        when(profileRepository.findByCandidate_Id(candidate.getId())).thenReturn(Optional.of(profile));
         VectorSearchService vectorSearchService = mock(VectorSearchService.class);
         ResumeBatchConfig config = createConfig(
-                candidateRepository, mock(CandidateProfileRepository.class),
+                candidateRepository, profileRepository,
                 vectorSearchService, mock(ResumePdfTextExtractor.class));
         Chunk<Candidate> chunk = new Chunk<>();
         chunk.add(candidate);
@@ -192,7 +198,7 @@ class ResumeBatchConfigTests {
         assertEquals(processedPath.toString(), candidate.getResumeFilePath());
         org.junit.jupiter.api.Assertions.assertTrue(java.nio.file.Files.exists(processedPath));
         org.junit.jupiter.api.Assertions.assertFalse(java.nio.file.Files.exists(resumePath));
-        verify(vectorSearchService).storeCandidateResume(candidate.getId().toString(), "Resume text");
+        verify(vectorSearchService).storeCandidateProfile(candidate.getId().toString(), profile);
         verify(candidateRepository).save(candidate);
     }
 
@@ -207,9 +213,12 @@ class ResumeBatchConfigTests {
         candidate.setIngestionStatus("PARSED");
         CandidateRepository candidateRepository = mock(CandidateRepository.class);
         doThrow(new IllegalStateException("database unavailable")).when(candidateRepository).save(candidate);
+        CandidateProfile profile = searchableProfile(candidate);
+        CandidateProfileRepository profileRepository = mock(CandidateProfileRepository.class);
+        when(profileRepository.findByCandidate_Id(candidate.getId())).thenReturn(Optional.of(profile));
         VectorSearchService vectorSearchService = mock(VectorSearchService.class);
         ResumeBatchConfig config = createConfig(
-                candidateRepository, mock(CandidateProfileRepository.class),
+                candidateRepository, profileRepository,
                 vectorSearchService, mock(ResumePdfTextExtractor.class));
         Chunk<Candidate> chunk = new Chunk<>();
         chunk.add(candidate);
@@ -223,7 +232,42 @@ class ResumeBatchConfigTests {
         org.junit.jupiter.api.Assertions.assertTrue(java.nio.file.Files.exists(resumePath));
         org.junit.jupiter.api.Assertions.assertFalse(
                 java.nio.file.Files.exists(tempDirectory.resolve("uploads").resolve("processed").resolve("resume.pdf")));
-        verify(vectorSearchService).storeCandidateResume(candidate.getId().toString(), "Resume text");
+        verify(vectorSearchService).storeCandidateProfile(candidate.getId().toString(), profile);
+    }
+
+    @Test
+    void writerMarksCandidateFailedWhenProfileIsMissing() throws Exception {
+        Path resumeDirectory = tempDirectory.resolve("resumes");
+        java.nio.file.Files.createDirectories(resumeDirectory);
+        Path resumePath = resumeDirectory.resolve("missing-profile.pdf");
+        java.nio.file.Files.createFile(resumePath);
+        Candidate candidate = new Candidate("Alex Morgan", "alex@example.com", null, "Resume text", resumePath.toString());
+        candidate.setId(UUID.randomUUID());
+        candidate.setIngestionStatus("PARSED");
+        CandidateRepository candidateRepository = mock(CandidateRepository.class);
+        CandidateProfileRepository profileRepository = mock(CandidateProfileRepository.class);
+        when(profileRepository.findByCandidate_Id(candidate.getId())).thenReturn(Optional.empty());
+        VectorSearchService vectorSearchService = mock(VectorSearchService.class);
+        ResumeBatchConfig config = createConfig(
+                candidateRepository, profileRepository,
+                vectorSearchService, mock(ResumePdfTextExtractor.class));
+        Chunk<Candidate> chunk = new Chunk<>();
+        chunk.add(candidate);
+
+        config.candidateVectorWriter().write(chunk);
+
+        assertEquals("FAILED", candidate.getIngestionStatus());
+        assertEquals("CANDIDATE_PROFILE_NOT_FOUND", candidate.getIngestionError());
+        assertEquals(resumePath.toString(), candidate.getResumeFilePath());
+        verify(vectorSearchService, never()).storeCandidateProfile(any(), any());
+        verify(candidateRepository).save(candidate);
+    }
+
+    private CandidateProfile searchableProfile(Candidate candidate) {
+        CandidateProfile profile = new CandidateProfile(candidate);
+        profile.setSummary("Patient care professional");
+        profile.setSkills(List.of("patient care"));
+        return profile;
     }
 
     private ResumeBatchConfig createConfig(
