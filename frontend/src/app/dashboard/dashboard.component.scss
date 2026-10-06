@@ -32,3 +32,13 @@
   font-style: italic;
   border-left: 3px solid #cbd5e0;
 }
+
+.uploaded-candidates {
+  h6 {
+    font-weight: 600;
+  }
+
+  .list-group-item {
+    min-width: 0;
+  }
+}

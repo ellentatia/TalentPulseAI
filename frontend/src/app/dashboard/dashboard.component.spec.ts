@@ -1,14 +1,18 @@
 import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { JobService } from '../core/services/job.service';
 import { DashboardComponent } from './dashboard.component';
 
 describe('DashboardComponent matching feedback', () => {
   let getCandidateMatches: (jobId: string, topK: number) => ReturnType<JobService['getCandidateMatches']>;
+  let getCandidateIngestionStatus: (candidateId: string) => ReturnType<JobService['getCandidateIngestionStatus']>;
+  let uploadResume: (fullName: string, email: string, file: File) => ReturnType<JobService['uploadResume']>;
 
   beforeEach(async () => {
     getCandidateMatches = () => of([]);
+    getCandidateIngestionStatus = (candidateId) => of({ candidateId, status: 'PENDING', errorCode: null });
+    uploadResume = () => of({ candidateId: 'candidate-123', status: 'PENDING' });
     await TestBed.configureTestingModule({
       imports: [DashboardComponent],
       providers: [
@@ -16,7 +20,9 @@ describe('DashboardComponent matching feedback', () => {
           provide: JobService,
           useValue: {
             getIngestionStatus: () => of({ status: 'IDLE' }),
+            getCandidateIngestionStatus: (candidateId: string) => getCandidateIngestionStatus(candidateId),
             getCandidateMatches: (jobId: string, topK: number) => getCandidateMatches(jobId, topK),
+            uploadResume: (fullName: string, email: string, file: File) => uploadResume(fullName, email, file)
           },
         },
       ],
@@ -45,5 +51,111 @@ describe('DashboardComponent matching feedback', () => {
 
     expect(fixture.componentInstance.matchMessage()).toContain('Unable to fetch matches');
     expect(fixture.componentInstance.isSearchingMatches()).toBe(false);
+  });
+
+  it('shows the uploaded candidate status and polls until processing completes', async () => {
+    let statusRequests = 0;
+    getCandidateIngestionStatus = (candidateId) => {
+      statusRequests += 1;
+      return of({
+        candidateId,
+        status: statusRequests === 1 ? 'PENDING' : 'COMPLETED',
+        errorCode: null
+      });
+    };
+    vi.useFakeTimers();
+
+    try {
+      const fixture = TestBed.createComponent(DashboardComponent);
+      fixture.detectChanges();
+      fixture.componentInstance.candidateForm.setValue({
+        fullName: 'Test Candidate',
+        email: 'candidate@example.com'
+      });
+      fixture.componentInstance.selectedResume = new File(['resume'], 'resume.pdf', { type: 'application/pdf' });
+
+      fixture.componentInstance.uploadResume(document.createElement('input'));
+      await vi.advanceTimersByTimeAsync(0);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.uploadedCandidates()[0].status).toBe('PENDING');
+      await vi.advanceTimersByTimeAsync(2000);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.uploadedCandidates()).toEqual([{
+        candidateId: 'candidate-123',
+        status: 'COMPLETED',
+        errorCode: null,
+        statusCheckError: false
+      }]);
+      expect(statusRequests).toBe(2);
+      expect(fixture.nativeElement.textContent).toContain('COMPLETED');
+      expect(fixture.nativeElement.textContent).toContain('separate from the batch job status');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows the safe error code when candidate processing fails', async () => {
+    getCandidateIngestionStatus = (candidateId) =>
+      of({ candidateId, status: 'FAILED', errorCode: 'PDF_PARSE_FAILED' });
+    vi.useFakeTimers();
+
+    try {
+      const fixture = TestBed.createComponent(DashboardComponent);
+      fixture.detectChanges();
+      fixture.componentInstance.candidateForm.setValue({
+        fullName: 'Test Candidate',
+        email: 'candidate@example.com'
+      });
+      fixture.componentInstance.selectedResume = new File(['resume'], 'resume.pdf', { type: 'application/pdf' });
+
+      fixture.componentInstance.uploadResume(document.createElement('input'));
+      await vi.advanceTimersByTimeAsync(0);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).toContain('FAILED');
+      expect(fixture.nativeElement.textContent).toContain('PDF_PARSE_FAILED');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('offers a retry when candidate status cannot be loaded', async () => {
+    let statusRequests = 0;
+    getCandidateIngestionStatus = (candidateId) => {
+      statusRequests += 1;
+      return statusRequests === 1
+        ? throwError(() => new Error('Request failed'))
+        : of({ candidateId, status: 'COMPLETED', errorCode: null });
+    };
+    vi.useFakeTimers();
+
+    try {
+      const fixture = TestBed.createComponent(DashboardComponent);
+      fixture.detectChanges();
+      fixture.componentInstance.candidateForm.setValue({
+        fullName: 'Test Candidate',
+        email: 'candidate@example.com'
+      });
+      fixture.componentInstance.selectedResume = new File(['resume'], 'resume.pdf', { type: 'application/pdf' });
+
+      fixture.componentInstance.uploadResume(document.createElement('input'));
+      await vi.advanceTimersByTimeAsync(0);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).toContain('Unable to refresh this status.');
+      const retryButton = fixture.nativeElement.querySelector('button[type="button"]') as HTMLButtonElement;
+      expect(retryButton.textContent).toContain('Retry');
+      retryButton.click();
+      await vi.advanceTimersByTimeAsync(0);
+      fixture.detectChanges();
+
+      expect(statusRequests).toBe(2);
+      expect(fixture.nativeElement.textContent).toContain('COMPLETED');
+      expect(fixture.nativeElement.textContent).not.toContain('Unable to refresh this status.');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

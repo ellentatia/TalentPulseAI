@@ -1,9 +1,20 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AsyncPipe, DecimalPipe, NgClass, NgFor, NgIf } from '@angular/common';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { BehaviorSubject, Observable, timer } from 'rxjs';
-import { switchMap, takeWhile } from 'rxjs/operators';
-import { CandidateMatch, JobDescriptionResponse, JobService, ResumeUploadResponse } from '../core/services/job.service';
+import { exhaustMap, switchMap, takeWhile } from 'rxjs/operators';
+import {
+  CandidateIngestionStatus,
+  CandidateMatch,
+  JobDescriptionResponse,
+  JobService,
+  ResumeUploadResponse
+} from '../core/services/job.service';
+
+interface UploadedCandidateStatus extends CandidateIngestionStatus {
+  statusCheckError: boolean;
+}
 
 @Component({
   selector: 'app-dashboard',
@@ -13,9 +24,11 @@ import { CandidateMatch, JobDescriptionResponse, JobService, ResumeUploadRespons
   styleUrl: './dashboard.component.scss'
 })
 export class DashboardComponent implements OnInit {
+  private readonly destroyRef = inject(DestroyRef);
   public readonly jobId = new FormControl('', { nonNullable: true });
   public topK: number = 5;
   public readonly jobStatus = signal('IDLE');
+  public readonly uploadedCandidates = signal<UploadedCandidateStatus[]>([]);
   public readonly jobForm = new FormGroup({
     title: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.maxLength(160)] }),
     department: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(120)] }),
@@ -61,6 +74,13 @@ export class DashboardComponent implements OnInit {
     this.jobService.uploadResume(fullName, email, this.selectedResume).subscribe({
       next: (result: ResumeUploadResponse) => {
         this.uploadMessage = `Resume queued for processing (${result.candidateId}).`;
+        this.updateUploadedCandidate({
+          candidateId: result.candidateId,
+          status: result.status,
+          errorCode: null,
+          statusCheckError: false
+        });
+        this.pollCandidateStatus(result.candidateId);
         this.candidateForm.reset();
         this.selectedResume = null;
         fileInput.value = '';
@@ -162,6 +182,25 @@ export class DashboardComponent implements OnInit {
     }
   }
 
+  public getCandidateStatusBadgeClass(status: string): string {
+    switch (status) {
+      case 'PENDING':
+      case 'PARSED':
+      case 'INDEXED': return 'bg-warning text-dark';
+      case 'COMPLETED': return 'bg-success';
+      case 'FAILED': return 'bg-danger';
+      default: return 'bg-secondary';
+    }
+  }
+
+  public retryCandidateStatus(candidateId: string): void {
+    this.updateUploadedCandidateById(candidateId, (candidate) => ({
+      ...candidate,
+      statusCheckError: false
+    }));
+    this.pollCandidateStatus(candidateId);
+  }
+
   public isJobRunning(): boolean {
     return ['RUNNING', 'STARTING', 'STARTED', 'STOPPING'].includes(this.jobStatus());
   }
@@ -170,5 +209,43 @@ export class DashboardComponent implements OnInit {
     if (score >= 0.8) return 'border-success';
     if (score >= 0.6) return 'border-warning';
     return 'border-danger';
+  }
+
+  private pollCandidateStatus(candidateId: string): void {
+    timer(0, 2000).pipe(
+      exhaustMap(() => this.jobService.getCandidateIngestionStatus(candidateId)),
+      takeWhile((status) => this.isCandidateProcessing(status.status), true),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe({
+      next: (status) => this.updateUploadedCandidate({
+        ...status,
+        statusCheckError: false
+      }),
+      error: () => this.updateUploadedCandidateById(candidateId, (candidate) => ({
+        ...candidate,
+        statusCheckError: true
+      }))
+    });
+  }
+
+  private isCandidateProcessing(status: string): boolean {
+    return ['PENDING', 'PARSED', 'INDEXED'].includes(status);
+  }
+
+  private updateUploadedCandidate(candidate: UploadedCandidateStatus): void {
+    this.uploadedCandidates.update((candidates) => {
+      const existingIndex = candidates.findIndex((item) => item.candidateId === candidate.candidateId);
+      if (existingIndex === -1) return [candidate, ...candidates];
+      return candidates.map((item, index) => index === existingIndex ? candidate : item);
+    });
+  }
+
+  private updateUploadedCandidateById(
+    candidateId: string,
+    update: (candidate: UploadedCandidateStatus) => UploadedCandidateStatus
+  ): void {
+    this.uploadedCandidates.update((candidates) => candidates.map((candidate) =>
+      candidate.candidateId === candidateId ? update(candidate) : candidate
+    ));
   }
 }

@@ -27,6 +27,12 @@ export interface ResumeUploadResponse {
   status: string;
 }
 
+export interface CandidateIngestionStatus {
+  candidateId: string;
+  status: string;
+  errorCode: string | null;
+}
+
 export interface JobDescriptionResponse {
   id: string;
   title: string;
@@ -62,6 +68,12 @@ export class JobService {
     formData.append('email', email);
     formData.append('file', file);
     return this.http.post<ResumeUploadResponse>(`${this.recruiterApiUrl}/candidates/resumes`, formData);
+  }
+
+  public getCandidateIngestionStatus(candidateId: string): Observable<CandidateIngestionStatus> {
+    return this.http.get<CandidateIngestionStatus>(
+      `${this.recruiterApiUrl}/candidates/${candidateId}/ingestion-status`
+    );
   }
 
   public createJobDescription(
