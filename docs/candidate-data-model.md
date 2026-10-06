@@ -30,3 +30,8 @@ uses `ON CONFLICT (id) DO UPDATE`, so re-indexing a changed profile replaces
 the existing document instead of creating a duplicate. Missing profiles and
 indexing errors leave the staged resume available for retry and mark ingestion
 as failed.
+
+Match responses expose exact skill-name or known-alias overlaps, experience
+figures only when both the profile and job description explicitly state them,
+and short snippets from structured profile fields. Semantic similarity remains
+a retrieval signal, not a confidence estimate or candidate-quality judgment.

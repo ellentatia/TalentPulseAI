@@ -28,9 +28,12 @@
   }
 }
 
-.snippet-box {
-  font-style: italic;
-  border-left: 3px solid #cbd5e0;
+.evidence-list {
+  padding-left: 1.25rem;
+
+  li {
+    margin-bottom: 0.5rem;
+  }
 }
 
 .uploaded-candidates {

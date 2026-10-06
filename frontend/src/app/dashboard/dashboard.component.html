@@ -151,24 +151,43 @@
       </div>
 
       <p class="text-muted" role="status" aria-live="polite">{{ matchMessage() }}</p>
+      <p class="small text-muted">
+        Similarity is a retrieval signal, not confidence or candidate quality. Review the profile evidence;
+        recruiters make all decisions.
+      </p>
 
       <!-- Candidate Match Cards -->
       <div *ngIf="matches$ | async as matches" class="match-results">
         <div 
           *ngFor="let candidate of matches" 
-          class="card mb-3 candidate-card" 
-          [ngClass]="getScoreColorClass(candidate.matchScore)">
+          class="card mb-3 candidate-card">
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-2">
               <h5 class="card-title mb-0">{{ candidate.fullName }}</h5>
-              <span class="badge bg-primary fs-6">
-                {{ (candidate.matchScore * 100) | number:'1.0-0' }}% Match
+              <span class="badge bg-secondary fs-6">
+                {{ (candidate.similarityScore * 100) | number:'1.0-0' }}% Similarity
               </span>
             </div>
             <p class="text-muted small mb-2">{{ candidate.email }}</p>
-            <div class="p-2 bg-light rounded text-secondary snippet-box">
-              "{{ candidate.snippet }}"
-            </div>
+            <p>{{ candidate.roleFitSummary }}</p>
+            @if (candidate.matchedSkills.length > 0) {
+              <p><strong>Skills named in both:</strong> {{ candidate.matchedSkills.join(', ') }}</p>
+            } @else {
+              <p><strong>Skills named in both:</strong> None identified by exact or known-alias comparison.</p>
+            }
+            @if (candidate.overlappingExperience) {
+              <p><strong>Experience reference:</strong> {{ candidate.overlappingExperience }}</p>
+            }
+            @if (candidate.evidenceSnippets.length > 0) {
+              <h6>Profile evidence</h6>
+              <ul class="evidence-list">
+                @for (evidence of candidate.evidenceSnippets; track evidence) {
+                  <li>{{ evidence }}</li>
+                }
+              </ul>
+            } @else {
+              <p class="text-muted small">No structured profile evidence is available for this result.</p>
+            }
           </div>
         </div>
       </div>

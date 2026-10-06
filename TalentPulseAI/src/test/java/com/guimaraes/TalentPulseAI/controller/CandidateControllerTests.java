@@ -23,6 +23,7 @@ import com.guimaraes.TalentPulseAI.repository.CandidateProfileRepository;
 import com.guimaraes.TalentPulseAI.repository.CandidateRepository;
 import com.guimaraes.TalentPulseAI.repository.JobDescriptionRepository;
 import com.guimaraes.TalentPulseAI.service.ResumeParsingService;
+import com.guimaraes.TalentPulseAI.service.MatchExplanationService;
 import com.guimaraes.TalentPulseAI.service.ResumeUploadService;
 import com.guimaraes.TalentPulseAI.service.VectorSearchService;
 import org.junit.jupiter.api.Test;
@@ -46,6 +47,9 @@ class CandidateControllerTests {
 
     @MockitoBean
     private CandidateProfileRepository candidateProfileRepository;
+
+    @MockitoBean
+    private MatchExplanationService matchExplanationService;
 
     @MockitoBean
     private JobDescriptionRepository jobDescriptionRepository;
@@ -170,17 +174,69 @@ class CandidateControllerTests {
                         "Experienced in patient care. alex@example.com Call 202-555-0100. " + "x".repeat(400),
                         java.util.Map.of("candidateId", candidateId.toString(), "distance", 0.2))));
         when(candidateRepository.findById(candidateId)).thenReturn(Optional.of(candidate));
+        CandidateProfile profile = new CandidateProfile(candidate);
+        profile.setSkills(List.of("patient care"));
+        profile.setSummary("Experienced patient care. alex@example.com Call 202-555-0100. " + "x".repeat(400));
+        when(candidateProfileRepository.findByCandidate_Id(candidateId)).thenReturn(Optional.of(profile));
+        when(matchExplanationService.explain(job.getRequirements(), profile)).thenReturn(
+                new MatchExplanationService.Explanation(
+                        List.of("patient care"),
+                        "Profile states 5 years; job description states 3 years.",
+                        "The profile lists 1 skill also explicitly named in the job description.",
+                        List.of(profile.getSummary(), "Skills: patient care")));
 
         mockMvc.perform(get("/api/recruiter/jobs/{jobId}/match", jobId)
                         .with(user("recruiter").roles("RECRUITER")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].matchScore").value(0.8))
-                .andExpect(jsonPath("$[0].snippet").value(org.hamcrest.Matchers.containsString("[email redacted]")))
-                .andExpect(jsonPath("$[0].snippet").value(org.hamcrest.Matchers.not(
+                .andExpect(jsonPath("$[0].similarityScore").value(0.8))
+                .andExpect(jsonPath("$[0].matchedSkills[0]").value("patient care"))
+                .andExpect(jsonPath("$[0].overlappingExperience").value(
+                        "Profile states 5 years; job description states 3 years."))
+                .andExpect(jsonPath("$[0].roleFitSummary").value(
+                        "The profile lists 1 skill also explicitly named in the job description."))
+                .andExpect(jsonPath("$[0].evidenceSnippets.length()").value(2))
+                .andExpect(jsonPath("$[0].confidence").doesNotExist())
+                .andExpect(jsonPath("$[0].evidenceSnippets[0]").value(
+                        org.hamcrest.Matchers.containsString("[email redacted]")))
+                .andExpect(jsonPath("$[0].evidenceSnippets[0]").value(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("alex@example.com"))))
-                .andExpect(jsonPath("$[0].snippet").value(org.hamcrest.Matchers.not(
+                .andExpect(jsonPath("$[0].evidenceSnippets[0]").value(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("202-555-0100"))))
-                .andExpect(jsonPath("$[0].snippet").value(org.hamcrest.Matchers.containsString("...")));
+                .andExpect(jsonPath("$[0].evidenceSnippets[0]").value(org.hamcrest.Matchers.containsString("...")));
+    }
+
+    @Test
+    void missingStructuredProfileDoesNotExposeIndexedDocumentTextAsEvidence() throws Exception {
+        UUID candidateId = UUID.randomUUID();
+        UUID jobId = UUID.randomUUID();
+        Candidate candidate = candidate(candidateId);
+        JobDescription job = new JobDescription("Assistant", "Care", "patient assistance");
+        when(jobDescriptionRepository.findById(jobId)).thenReturn(Optional.of(job));
+        when(vectorSearchService.findTopMatchingCandidates(job.getRequirements(), 5))
+                .thenReturn(List.of(new Document(
+                        candidateId.toString(),
+                        "Legacy raw resume content containing private text",
+                        java.util.Map.of("candidateId", candidateId.toString(), "distance", 0.2))));
+        when(candidateRepository.findById(candidateId)).thenReturn(Optional.of(candidate));
+        when(candidateProfileRepository.findByCandidate_Id(candidateId)).thenReturn(Optional.empty());
+        when(matchExplanationService.explain(job.getRequirements(), null)).thenReturn(
+                new MatchExplanationService.Explanation(
+                        List.of(),
+                        null,
+                        "No structured profile is available. Review the indexed evidence before drawing conclusions.",
+                        List.of()));
+
+        mockMvc.perform(get("/api/recruiter/jobs/{jobId}/match", jobId)
+                        .with(user("recruiter").roles("RECRUITER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].snippet").value(""))
+                .andExpect(jsonPath("$[0].matchedSkills.length()").value(0))
+                .andExpect(jsonPath("$[0].overlappingExperience").doesNotExist())
+                .andExpect(jsonPath("$[0].evidenceSnippets.length()").value(0))
+                .andExpect(jsonPath("$[0].roleFitSummary").value(org.hamcrest.Matchers.containsString(
+                        "No structured profile is available")))
+                .andExpect(jsonPath("$[0].snippet").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("Legacy raw resume content"))));
     }
 
     @Test

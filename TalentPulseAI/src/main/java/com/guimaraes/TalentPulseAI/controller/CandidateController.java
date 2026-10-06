@@ -34,6 +34,7 @@ import com.guimaraes.TalentPulseAI.repository.CandidateRepository;
 import com.guimaraes.TalentPulseAI.repository.JobDescriptionRepository;
 import com.guimaraes.TalentPulseAI.service.ResumeParsingService;
 import com.guimaraes.TalentPulseAI.service.ResumeUploadService;
+import com.guimaraes.TalentPulseAI.service.MatchExplanationService;
 import com.guimaraes.TalentPulseAI.service.VectorSearchService;
 
 import jakarta.validation.Valid;
@@ -54,6 +55,7 @@ public class CandidateController {
     private final CandidateRepository candidateRepository;
     private final CandidateProfileRepository candidateProfileRepository;
     private final JobDescriptionRepository jobDescriptionRepository;
+    private final MatchExplanationService matchExplanationService;
     private final VectorSearchService vectorSearchService;
     private final ResumeParsingService resumeParsingService;
     private final ResumeUploadService resumeUploadService;
@@ -173,12 +175,12 @@ public class CandidateController {
 
         List<Document> similarDocs = vectorSearchService.findTopMatchingCandidates(job.getRequirements(), topK);
         List<CandidateMatchResponse> response = similarDocs.stream()
-                .map(this::toCandidateMatchResponse)
+                .map(document -> toCandidateMatchResponse(document, job.getRequirements()))
                 .toList();
         return ResponseEntity.ok(response);
     }
 
-    private CandidateMatchResponse toCandidateMatchResponse(Document document) {
+    private CandidateMatchResponse toCandidateMatchResponse(Document document, String jobRequirements) {
         Object candidateIdMetadata = document.getMetadata().get("candidateId");
         if (candidateIdMetadata == null) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Match result is missing candidate ID");
@@ -197,12 +199,24 @@ public class CandidateController {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Match result is missing similarity distance");
         }
 
+        CandidateProfile profile = candidateProfileRepository.findByCandidate_Id(candidateId).orElse(null);
+        MatchExplanationService.Explanation explanation =
+                matchExplanationService.explain(jobRequirements, profile);
+        List<String> evidenceSnippets = explanation.evidenceSnippets().stream()
+                .map(this::safeSnippet)
+                .filter(snippet -> !snippet.isBlank())
+                .toList();
+
         return new CandidateMatchResponse(
                 candidate.getId(),
                 candidate.getFullName(),
                 candidate.getEmail(),
                 1.0 - distance.doubleValue(),
-                safeSnippet(document.getText()));
+                evidenceSnippets.isEmpty() ? "" : evidenceSnippets.getFirst(),
+                explanation.matchedSkills(),
+                explanation.overlappingExperience(),
+                explanation.roleFitSummary(),
+                evidenceSnippets);
     }
 
     private CandidateResponse toCandidateResponse(Candidate candidate) {

@@ -79,8 +79,33 @@ public class SkillExtractionService {
         return List.copyOf(skills);
     }
 
+    public boolean mentionsSkill(String text, String skill) {
+        if (text == null || text.isBlank() || skill == null || skill.isBlank()) {
+            return false;
+        }
+
+        String canonicalSkill = canonicalize(skill);
+        return SKILL_ALIASES.entrySet().stream()
+                .filter(alias -> alias.getValue().equals(canonicalSkill))
+                .map(Map.Entry::getKey)
+                .anyMatch(alias -> containsWholePhrase(text, alias))
+                || containsWholePhrase(text, canonicalSkill);
+    }
+
     private String normalize(String phrase) {
         String normalized = WHITESPACE.matcher(phrase.toLowerCase(Locale.ROOT).strip()).replaceAll(" ");
         return EDGE_PUNCTUATION.matcher(normalized).replaceAll("").strip();
+    }
+
+    private String canonicalize(String skill) {
+        String normalizedSkill = normalize(skill);
+        return SKILL_ALIASES.getOrDefault(normalizedSkill, normalizedSkill);
+    }
+
+    private boolean containsWholePhrase(String text, String phrase) {
+        String expression = "(?<![\\p{L}\\p{N}])" + Pattern.quote(phrase) + "(?![\\p{L}\\p{N}])";
+        return Pattern.compile(expression, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE)
+                .matcher(text)
+                .find();
     }
 }

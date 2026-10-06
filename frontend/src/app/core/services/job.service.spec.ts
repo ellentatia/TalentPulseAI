@@ -105,8 +105,28 @@ describe('JobService API contracts', () => {
     );
     expect(request.request.method).toBe('GET');
     expect(request.request.params.get('topK')).toBe('8');
-    request.flush([]);
+    request.flush([{
+      candidateId: 'candidate-123',
+      fullName: 'Synthetic Candidate',
+      email: 'candidate@example.com',
+      similarityScore: 0.82,
+      snippet: 'Skills: patient care',
+      matchedSkills: ['patient care'],
+      overlappingExperience: 'Profile states 5 years; job description states 3 years.',
+      roleFitSummary: 'The profile lists 1 skill also explicitly named in the job description.',
+      evidenceSnippets: ['Skills: patient care']
+    }]);
 
-    expect(response).toEqual([]);
+    expect(response).toEqual([{
+      candidateId: 'candidate-123',
+      fullName: 'Synthetic Candidate',
+      email: 'candidate@example.com',
+      similarityScore: 0.82,
+      snippet: 'Skills: patient care',
+      matchedSkills: ['patient care'],
+      overlappingExperience: 'Profile states 5 years; job description states 3 years.',
+      roleFitSummary: 'The profile lists 1 skill also explicitly named in the job description.',
+      evidenceSnippets: ['Skills: patient care']
+    }]);
   });
 });

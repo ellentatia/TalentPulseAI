@@ -7,8 +7,12 @@ export interface CandidateMatch {
   candidateId: string;
   fullName: string;
   email: string;
-  matchScore: number;
+  similarityScore: number;
   snippet: string;
+  matchedSkills: string[];
+  overlappingExperience: string | null;
+  roleFitSummary: string;
+  evidenceSnippets: string[];
 }
 
 export interface BatchJobStatus {

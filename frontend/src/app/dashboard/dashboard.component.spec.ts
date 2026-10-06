@@ -88,8 +88,12 @@ describe('DashboardComponent matching feedback', () => {
       candidateId: 'candidate-123',
       fullName: 'Test Candidate',
       email: 'candidate@example.com',
-      matchScore: 0.8,
-      snippet: 'Relevant synthetic experience'
+      similarityScore: 0.8,
+      snippet: 'Skills: patient care',
+      matchedSkills: ['patient care'],
+      overlappingExperience: null,
+      roleFitSummary: 'The profile lists 1 skill also explicitly named in the job description.',
+      evidenceSnippets: ['Skills: patient care']
     }]);
     const fixture = TestBed.createComponent(DashboardComponent);
     fixture.detectChanges();
@@ -111,7 +115,10 @@ describe('DashboardComponent matching feedback', () => {
 
     expect(fixture.componentInstance.matchMessage()).toContain('1 candidate found');
     expect(fixture.nativeElement.textContent).toContain('Test Candidate');
-    expect(fixture.nativeElement.textContent).toContain('Relevant synthetic experience');
+    expect(fixture.nativeElement.textContent).toContain('80% Similarity');
+    expect(fixture.nativeElement.textContent).toContain('The profile lists 1 skill');
+    expect(fixture.nativeElement.textContent).toContain('patient care');
+    expect(fixture.nativeElement.textContent).toContain('not confidence or candidate quality');
   });
 
   it('shows the uploaded candidate status and polls until processing completes', async () => {

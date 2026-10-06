@@ -205,12 +205,6 @@ export class DashboardComponent implements OnInit {
     return ['RUNNING', 'STARTING', 'STARTED', 'STOPPING'].includes(this.jobStatus());
   }
 
-  public getScoreColorClass(score: number): string {
-    if (score >= 0.8) return 'border-success';
-    if (score >= 0.6) return 'border-warning';
-    return 'border-danger';
-  }
-
   private pollCandidateStatus(candidateId: string): void {
     timer(0, 2000).pipe(
       exhaustMap(() => this.jobService.getCandidateIngestionStatus(candidateId)),
