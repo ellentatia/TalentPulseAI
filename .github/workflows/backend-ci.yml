@@ -1,0 +1,46 @@
+name: Backend CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: talentpulse_db
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d talentpulse_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      POSTGRES_PASSWORD: ci-test-password
+      KEYCLOAK_ISSUER_URI: http://localhost:8080/realms/recruitment-realm
+      TALENTPULSE_CORS_ALLOWED_ORIGINS: http://localhost:4200
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: TalentPulseAI/pom.xml
+
+      - name: Verify backend
+        working-directory: TalentPulseAI
+        run: bash ./mvnw -B -ntp clean verify

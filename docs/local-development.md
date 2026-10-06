@@ -83,6 +83,33 @@ the servers:
 go run .\tools\verify.go
 ```
 
+The full verification command starts or reuses PostgreSQL and Keycloak, waits
+for PostgreSQL, runs the backend Maven verification, then runs frontend tests
+and a production build. Docker Desktop, Go, Java 25, and Node.js/npm must be
+available. From the `frontend` directory, the frontend checks can also be run
+directly with:
+
+```powershell
+npm ci
+npm audit --audit-level=high
+npm test -- --watch=false
+npm run build
+```
+
+## Continuous integration and security scanning
+
+GitHub Actions runs backend verification and frontend tests/builds for pushes,
+pull requests, and manual dispatches. Backend CI provisions PostgreSQL with
+pgvector and uses disposable CI-only database credentials; it does not start
+Keycloak or Ollama. The frontend workflow runs `npm audit --audit-level=high`
+against the committed lockfile.
+
+This repository does not currently configure a Java dependency vulnerability
+scan or automated secret scanning. Treat those as follow-up work: enable
+GitHub's dependency graph, Dependabot alerts and security updates, and secret
+scanning for the repository, then verify the settings and alerts in GitHub.
+The CI-only values are test configuration, not production credentials.
+
 ## Try the recruiter workflow
 
 Use synthetic resume content and an `@example.com` address; do not use real
