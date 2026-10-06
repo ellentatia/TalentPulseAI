@@ -33,7 +33,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8080/realms/recruitment-realm
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/recruitment-realm}
 
   batch:
     jdbc:
@@ -55,3 +55,7 @@ spring:
       embedding:
         options:
           model: mxbai-embed-large
+
+talentpulse:
+  cors:
+    allowed-origins: ${TALENTPULSE_CORS_ALLOWED_ORIGINS:http://localhost:4200}

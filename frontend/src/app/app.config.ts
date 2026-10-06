@@ -3,7 +3,7 @@ import { provideRouter } from '@angular/router';
 import { provideHttpClient, withInterceptorsFromDi, HTTP_INTERCEPTORS } from '@angular/common/http';
 import { KeycloakService, KeycloakBearerInterceptor } from 'keycloak-angular';
 import { routes } from './app.routes';
-import { environment } from '../environments/environment.development';
+import { environment } from '../environments/environment';
 
 // Factory function to initialize Keycloak before Angular app boots
 function initializeKeycloak(keycloak: KeycloakService) {
