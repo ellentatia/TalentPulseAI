@@ -1,197 +1,210 @@
-<div class="dashboard-container">
+<main class="dashboard-container">
   <header class="dashboard-header">
-    <h2>TalentPulseAI Recruiter Workspace</h2>
-    <p class="subtitle">AI-powered resume ingestion and semantic candidate matching</p>
+    <p class="dashboard-eyebrow">TalentPulseAI <span aria-hidden="true">/</span> Recruiter workspace</p>
+    <h1>Find relevant experience, with evidence.</h1>
+    <p class="dashboard-subtitle">
+      Organize resume intake and explore candidates whose profiles relate to your role requirements.
+    </p>
   </header>
 
-  <section class="card mb-4 shadow-sm">
-    <div class="card-header bg-dark text-white">
-      <h5 class="mb-0">Upload a Candidate Resume</h5>
+  <section class="workspace-panel" aria-labelledby="upload-heading">
+    <div class="section-heading">
+      <span class="step-indicator" aria-hidden="true">01</span>
+      <div>
+        <h2 id="upload-heading">Add a candidate resume</h2>
+        <p>Upload a PDF and follow its processing status.</p>
+      </div>
     </div>
-    <div class="card-body">
-      <form [formGroup]="candidateForm" (ngSubmit)="uploadResume(resumeFileInput)">
-        <div class="row g-3">
-          <div class="col-md-5">
-            <label class="form-label" for="candidate-name">Candidate name</label>
-            <input id="candidate-name" class="form-control" formControlName="fullName" autocomplete="name" required>
-          </div>
-          <div class="col-md-5">
-            <label class="form-label" for="candidate-email">Candidate email</label>
-            <input id="candidate-email" class="form-control" type="email" formControlName="email" autocomplete="email" required>
-          </div>
-          <div class="col-md-2">
-            <label class="form-label" for="resume-pdf">Resume PDF</label>
-            <input #resumeFileInput id="resume-pdf" class="form-control" type="file" accept=".pdf,application/pdf" (change)="onResumeSelected($event)" required>
-          </div>
+
+    <form [formGroup]="candidateForm" (ngSubmit)="uploadResume(resumeFileInput)">
+      <div class="form-grid form-grid--candidate">
+        <div class="field">
+          <label for="candidate-name">Candidate name</label>
+          <input id="candidate-name" class="form-control" formControlName="fullName" autocomplete="name" required>
         </div>
-        <div class="d-flex align-items-center gap-3 mt-3">
-          <button class="btn btn-primary" type="submit" [disabled]="candidateForm.invalid || !selectedResume || isUploading">
-            {{ isUploading ? 'Uploading...' : 'Upload PDF' }}
-          </button>
-          <span class="text-muted small">PDF only, maximum 10 MB. Each file is uploaded with one candidate record.</span>
+        <div class="field">
+          <label for="candidate-email">Candidate email</label>
+          <input id="candidate-email" class="form-control" type="email" formControlName="email" autocomplete="email" required>
         </div>
-        <p class="mt-3 mb-0" role="status" aria-live="polite">{{ uploadMessage }}</p>
-      </form>
-      @if (uploadedCandidates().length > 0) {
-        <section class="uploaded-candidates mt-4" aria-labelledby="uploaded-candidates-heading">
-          <h6 id="uploaded-candidates-heading">Uploaded resume processing status</h6>
-          <p class="text-muted small">These per-candidate statuses are separate from the batch job status below.</p>
-          <ul class="list-group" aria-live="polite">
-            @for (candidate of uploadedCandidates(); track candidate.candidateId) {
-              <li class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
-                <span class="small text-break">Candidate ID: <code>{{ candidate.candidateId }}</code></span>
-                <span class="d-flex align-items-center gap-2">
-                  <span class="badge" [ngClass]="getCandidateStatusBadgeClass(candidate.status)">
-                    {{ candidate.status }}
-                  </span>
-                  @if (candidate.status === 'FAILED' && candidate.errorCode) {
-                    <span class="small text-danger">Error code: {{ candidate.errorCode }}</span>
-                  }
-                  @if (candidate.statusCheckError) {
-                    <span class="small text-danger" role="alert">Unable to refresh this status.</span>
-                    <button class="btn btn-sm btn-outline-secondary" type="button"
-                      (click)="retryCandidateStatus(candidate.candidateId)">
-                      Retry
-                    </button>
-                  }
+        <div class="field">
+          <label for="resume-pdf">Resume PDF</label>
+          <input #resumeFileInput id="resume-pdf" class="form-control file-control" type="file"
+            accept=".pdf,application/pdf" (change)="onResumeSelected($event)" required>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="button button--primary" type="submit"
+          [disabled]="candidateForm.invalid || !selectedResume || isUploading">
+          {{ isUploading ? 'Uploading...' : 'Upload PDF' }}
+        </button>
+        <span class="field-hint">PDF only, maximum 10 MB. Each file is uploaded with one candidate record.</span>
+      </div>
+      <p class="feedback" [class.feedback--error]="uploadMessage.startsWith('Upload failed')"
+        role="status" aria-live="polite">{{ uploadMessage }}</p>
+    </form>
+
+    @if (uploadedCandidates().length > 0) {
+      <section class="uploaded-candidates" aria-labelledby="uploaded-candidates-heading">
+        <div class="subsection-heading">
+          <h3 id="uploaded-candidates-heading">Resume processing</h3>
+          <p>These per-candidate statuses are separate from the batch job status below.</p>
+        </div>
+        <ul class="status-list" aria-live="polite">
+          @for (candidate of uploadedCandidates(); track candidate.candidateId) {
+            <li class="status-list__item">
+              <span class="candidate-id">Candidate ID: <code>{{ candidate.candidateId }}</code></span>
+              <span class="status-list__details">
+                <span class="status-badge" [ngClass]="getCandidateStatusBadgeClass(candidate.status)">
+                  {{ candidate.status }}
                 </span>
-              </li>
-            }
-          </ul>
-        </section>
+                @if (candidate.status === 'FAILED' && candidate.errorCode) {
+                  <span class="inline-error">Error code: {{ candidate.errorCode }}</span>
+                }
+                @if (candidate.statusCheckError) {
+                  <span class="inline-error" role="alert">Unable to refresh this status.</span>
+                  <button class="button button--subtle button--small" type="button"
+                    (click)="retryCandidateStatus(candidate.candidateId)">
+                    Retry
+                  </button>
+                }
+              </span>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+  </section>
+
+  <section class="workspace-panel" aria-labelledby="job-heading">
+    <div class="section-heading">
+      <span class="step-indicator" aria-hidden="true">02</span>
+      <div>
+        <h2 id="job-heading">Describe the role</h2>
+        <p>Save the requirements you want to use for candidate discovery.</p>
+      </div>
+    </div>
+    <form [formGroup]="jobForm" (ngSubmit)="createJobDescription()">
+      <div class="form-grid form-grid--job">
+        <div class="field">
+          <label for="job-title">Job title</label>
+          <input id="job-title" class="form-control" formControlName="title" maxlength="160" required>
+        </div>
+        <div class="field">
+          <label for="job-department">Department <span class="optional-label">Optional</span></label>
+          <input id="job-department" class="form-control" formControlName="department" maxlength="120">
+        </div>
+        <div class="field field--full">
+          <label for="job-requirements">Requirements</label>
+          <textarea id="job-requirements" class="form-control" formControlName="requirements" rows="5" required></textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="button button--primary" type="submit" [disabled]="jobForm.invalid || isSavingJob()">
+          {{ isSavingJob() ? 'Saving...' : 'Save job description' }}
+        </button>
+        <span class="field-hint">Saving sets the new job ID in the matching form below.</span>
+      </div>
+      <p class="feedback" [class.feedback--error]="jobMessage().startsWith('Unable')"
+        role="status" aria-live="polite">{{ jobMessage() }}</p>
+      @if (createdJob(); as job) {
+        <p class="saved-job-id">Saved job ID: <code>{{ job.id }}</code></p>
       }
-    </div>
+    </form>
   </section>
 
-  <section class="card mb-4 shadow-sm">
-    <div class="card-header bg-dark text-white">
-      <h5 class="mb-0">Create a Job Description</h5>
-    </div>
-    <div class="card-body">
-      <form [formGroup]="jobForm" (ngSubmit)="createJobDescription()">
-        <div class="row g-3">
-          <div class="col-md-5">
-            <label class="form-label" for="job-title">Job title</label>
-            <input id="job-title" class="form-control" formControlName="title" maxlength="160" required>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label" for="job-department">Department</label>
-            <input id="job-department" class="form-control" formControlName="department" maxlength="120">
-          </div>
-          <div class="col-12">
-            <label class="form-label" for="job-requirements">Requirements</label>
-            <textarea id="job-requirements" class="form-control" formControlName="requirements" rows="5" required></textarea>
-          </div>
+  <section class="workflow-panel" aria-labelledby="ingestion-heading">
+    <div class="workflow-copy">
+      <div class="section-heading section-heading--compact">
+        <span class="step-indicator" aria-hidden="true">03</span>
+        <div>
+          <h2 id="ingestion-heading">Process uploaded resumes</h2>
+          <p>Extract profile information and prepare it for semantic search.</p>
         </div>
-        <div class="d-flex align-items-center gap-3 mt-3">
-          <button class="btn btn-primary" type="submit" [disabled]="jobForm.invalid || isSavingJob()">
-            {{ isSavingJob() ? 'Saving...' : 'Save Job Description' }}
-          </button>
-          <span class="text-muted small">Saving will set the new job ID in the matching form below.</span>
-        </div>
-        <p class="mt-3 mb-0" role="status" aria-live="polite">{{ jobMessage() }}</p>
-        @if (createdJob(); as job) {
-          <p class="small mb-0 mt-2">Saved job ID: <code>{{ job.id }}</code></p>
-        }
-      </form>
-    </div>
-  </section>
-
-  <!-- Section 1: Resume Batch Ingestion -->
-  <section class="card mb-4 shadow-sm">
-    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-      <h5 class="mb-0">1. Resume Ingestion</h5>
-      <span class="badge" [ngClass]="getStatusBadgeClass()">{{ jobStatus() }}</span>
-    </div>
-    <div class="card-body">
-      <p class="text-muted">
-        Trigger Spring Batch to process uploaded PDF resumes into PostgreSQL pgvector embeddings.
-      </p>
-      <button 
-        class="btn btn-primary" 
-        (click)="triggerIngestion()" 
-        [disabled]="isJobRunning()">
-        Run Batch Ingestion Job
+      </div>
+      <button class="button button--secondary" type="button" (click)="triggerIngestion()" [disabled]="isJobRunning()">
+        {{ isJobRunning() ? 'Processing resumes...' : 'Run ingestion job' }}
       </button>
     </div>
+    <div class="workflow-status">
+      <span class="field-hint">Batch status</span>
+      <span class="status-badge" [ngClass]="getStatusBadgeClass()">{{ jobStatus() }}</span>
+    </div>
   </section>
 
-  <!-- Section 2: Candidate Matching -->
-  <section class="card shadow-sm">
-    <div class="card-header bg-dark text-white">
-      <h5 class="mb-0">2. Semantic Candidate Matching</h5>
-    </div>
-    <div class="card-body">
-      <div class="row g-3 align-items-center mb-4">
-        <div class="col-md-7">
-          <label class="form-label font-weight-bold">Job Description UUID</label>
-          <input 
-            type="text" 
-            class="form-control" 
-            [formControl]="jobId" 
-            placeholder="Save a job description above or enter its UUID">
-        </div>
-        <div class="col-md-2">
-          <label class="form-label font-weight-bold">Top K</label>
-          <input 
-            type="number" 
-            class="form-control" 
-            [(ngModel)]="topK" 
-            min="1" 
-            max="20">
-        </div>
-        <div class="col-md-3 d-flex align-items-end">
-          <button 
-            class="btn btn-success w-100" 
-            (click)="searchMatches()" 
-            [disabled]="!jobId.value.trim() || isSearchingMatches()">
-            {{ isSearchingMatches() ? 'Searching...' : 'Find Matching Candidates' }}
-          </button>
-        </div>
+  <section class="workspace-panel matching-panel" aria-labelledby="matching-heading">
+    <div class="section-heading">
+      <span class="step-indicator" aria-hidden="true">04</span>
+      <div>
+        <h2 id="matching-heading">Explore relevant candidates</h2>
+        <p>Search indexed profiles using a saved job description.</p>
       </div>
+    </div>
 
-      <p class="text-muted" role="status" aria-live="polite">{{ matchMessage() }}</p>
-      <p class="small text-muted">
-        Similarity is a retrieval signal, not confidence or candidate quality. Review the profile evidence;
-        recruiters make all decisions.
-      </p>
+    <div class="search-controls">
+      <div class="field">
+        <label for="job-id">Job description ID</label>
+        <input id="job-id" type="text" class="form-control" [formControl]="jobId"
+          placeholder="Save a job description above or enter its ID">
+      </div>
+      <div class="field field--top-k">
+        <label for="top-k">Results</label>
+        <input id="top-k" type="number" class="form-control" [(ngModel)]="topK" min="1" max="20">
+      </div>
+      <button class="button button--primary search-button" type="button" (click)="searchMatches()"
+        [disabled]="!jobId.value.trim() || isSearchingMatches()">
+        {{ isSearchingMatches() ? 'Searching...' : 'Find candidates' }}
+      </button>
+    </div>
 
-      <!-- Candidate Match Cards -->
-      <div *ngIf="matches$ | async as matches" class="match-results">
-        <div 
-          *ngFor="let candidate of matches" 
-          class="card mb-3 candidate-card">
-          <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-              <h5 class="card-title mb-0">{{ candidate.fullName }}</h5>
-              <span class="badge bg-secondary fs-6">
-                {{ (candidate.similarityScore * 100) | number:'1.0-0' }}% Similarity
-              </span>
-            </div>
-            <p class="text-muted small mb-2">{{ candidate.email }}</p>
-            <p>{{ candidate.roleFitSummary }}</p>
-            @if (candidate.matchedSkills.length > 0) {
-              <p><strong>Skills named in both:</strong> {{ candidate.matchedSkills.join(', ') }}</p>
-            } @else {
-              <p><strong>Skills named in both:</strong> None identified by exact or known-alias comparison.</p>
-            }
-            @if (candidate.overlappingExperience) {
-              <p><strong>Experience reference:</strong> {{ candidate.overlappingExperience }}</p>
-            }
-            @if (candidate.evidenceSnippets.length > 0) {
-              <h6>Profile evidence</h6>
-              <ul class="evidence-list">
-                @for (evidence of candidate.evidenceSnippets; track evidence) {
-                  <li>{{ evidence }}</li>
-                }
-              </ul>
-            } @else {
-              <p class="text-muted small">No structured profile evidence is available for this result.</p>
-            }
+    <div class="matching-guidance">
+      <span class="guidance-mark" aria-hidden="true">i</span>
+      <p>Similarity is a retrieval signal, not confidence or candidate quality. Review the profile evidence; recruiters make all decisions.</p>
+    </div>
+    <p class="feedback match-feedback" [class.feedback--error]="matchMessage().startsWith('Unable')"
+      role="status" aria-live="polite">{{ matchMessage() }}</p>
+
+    <div *ngIf="matches$ | async as matches" class="match-results">
+      <article *ngFor="let candidate of matches" class="candidate-card">
+        <div class="candidate-card__header">
+          <div>
+            <h3>{{ candidate.fullName }}</h3>
+            <p class="candidate-email">{{ candidate.email }}</p>
           </div>
+          <span class="similarity-badge">
+            <span>{{ (candidate.similarityScore * 100) | number:'1.0-0' }}%</span>
+            Similarity
+          </span>
         </div>
-      </div>
-
+        <p class="role-summary">{{ candidate.roleFitSummary }}</p>
+        <div class="candidate-signals">
+          <section class="candidate-signal">
+            <h4>Skills named in both</h4>
+            @if (candidate.matchedSkills.length > 0) {
+              <p>{{ candidate.matchedSkills.join(', ') }}</p>
+            } @else {
+              <p class="muted-copy">None identified by exact or known-alias comparison.</p>
+            }
+          </section>
+          @if (candidate.overlappingExperience) {
+            <section class="candidate-signal">
+              <h4>Experience reference</h4>
+              <p>{{ candidate.overlappingExperience }}</p>
+            </section>
+          }
+        </div>
+        @if (candidate.evidenceSnippets.length > 0) {
+          <section class="evidence-section">
+            <h4>Profile evidence</h4>
+            <ul class="evidence-list">
+              @for (evidence of candidate.evidenceSnippets; track evidence) {
+                <li>{{ evidence }}</li>
+              }
+            </ul>
+          </section>
+        } @else {
+          <p class="muted-copy evidence-unavailable">No structured profile evidence is available for this result.</p>
+        }
+      </article>
     </div>
   </section>
-</div>
+</main>

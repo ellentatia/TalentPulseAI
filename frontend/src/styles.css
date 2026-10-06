@@ -1,1 +1,214 @@
-/* You can add global styles to this file, and also import other style files */
+:root {
+  color-scheme: light;
+  font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --color-ink: #1c343b;
+  --color-muted: #687d83;
+  --color-border: #e1e9e8;
+  --color-border-strong: #cbd8d7;
+  --color-surface: #fff;
+  --color-accent: #148078;
+  --color-accent-strong: #0e746e;
+  --color-accent-soft: #e7f4f1;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: #f4f7f6;
+  color: var(--color-ink);
+  font-family: inherit;
+  font-size: 16px;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.field label {
+  color: var(--color-ink);
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.optional-label,
+.field-hint {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.form-control {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 0.93rem;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.form-control::placeholder {
+  color: #87989d;
+}
+
+.form-control:focus {
+  border-color: var(--color-accent);
+  outline: 0;
+  box-shadow: 0 0 0 3px rgb(14 116 110 / 15%);
+}
+
+textarea.form-control {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.file-control {
+  padding: 0.45rem;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+}
+
+.file-control::file-selector-button {
+  margin-right: 0.6rem;
+  padding: 0.45rem 0.65rem;
+  border: 0;
+  border-radius: 6px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  padding: 0.65rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+.button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.button:focus-visible {
+  outline: 3px solid rgb(14 116 110 / 28%);
+  outline-offset: 2px;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.button--primary {
+  background: var(--color-accent-strong);
+  color: white;
+}
+
+.button--primary:not(:disabled):hover {
+  background: #075e59;
+}
+
+.button--secondary {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+.button--secondary:not(:disabled):hover,
+.button--subtle:not(:disabled):hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.button--subtle {
+  min-height: 34px;
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+.button--small {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+}
+
+.feedback {
+  margin: 0.8rem 0 0;
+  color: var(--color-accent-strong);
+  font-size: 0.88rem;
+}
+
+.feedback--error {
+  color: #a1322c;
+}
+
+.status-badge {
+  display: inline-flex;
+  min-height: 27px;
+  align-items: center;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: #edf1f2;
+  color: #475a60;
+  font-size: 0.74rem;
+  font-weight: 750;
+  letter-spacing: 0.035em;
+}
+
+.status-badge--progress {
+  background: #fff2d8;
+  color: #815b12;
+}
+
+.status-badge--complete {
+  background: #e1f3ed;
+  color: #17634f;
+}
+
+.status-badge--failed,
+.inline-error {
+  color: #a1322c;
+}
+
+.status-badge--failed {
+  background: #fce8e7;
+}
+
+.inline-error {
+  font-size: 0.8rem;
+}
+
+code {
+  overflow-wrap: anywhere;
+  color: var(--color-accent-strong);
+}
+
+::selection {
+  background: #c6e7df;
+  color: #173c3b;
+}

@@ -175,10 +175,10 @@ export class DashboardComponent implements OnInit {
       case 'RUNNING':
       case 'STARTING':
       case 'STARTED':
-      case 'STOPPING': return 'bg-warning text-dark';
-      case 'COMPLETED': return 'bg-success';
-      case 'FAILED': return 'bg-danger';
-      default: return 'bg-secondary';
+      case 'STOPPING': return 'status-badge--progress';
+      case 'COMPLETED': return 'status-badge--complete';
+      case 'FAILED': return 'status-badge--failed';
+      default: return '';
     }
   }
 
@@ -186,10 +186,10 @@ export class DashboardComponent implements OnInit {
     switch (status) {
       case 'PENDING':
       case 'PARSED':
-      case 'INDEXED': return 'bg-warning text-dark';
-      case 'COMPLETED': return 'bg-success';
-      case 'FAILED': return 'bg-danger';
-      default: return 'bg-secondary';
+      case 'INDEXED': return 'status-badge--progress';
+      case 'COMPLETED': return 'status-badge--complete';
+      case 'FAILED': return 'status-badge--failed';
+      default: return '';
     }
   }
 
