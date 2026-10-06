@@ -116,11 +116,13 @@
           <button 
             class="btn btn-success w-100" 
             (click)="searchMatches()" 
-            [disabled]="!jobId.value.trim()">
-            Find Matching Candidates
+            [disabled]="!jobId.value.trim() || isSearchingMatches()">
+            {{ isSearchingMatches() ? 'Searching...' : 'Find Matching Candidates' }}
           </button>
         </div>
       </div>
+
+      <p class="text-muted" role="status" aria-live="polite">{{ matchMessage() }}</p>
 
       <!-- Candidate Match Cards -->
       <div *ngIf="matches$ | async as matches" class="match-results">
@@ -137,7 +139,7 @@
             </div>
             <p class="text-muted small mb-2">{{ candidate.email }}</p>
             <div class="p-2 bg-light rounded text-secondary snippet-box">
-              "{{ candidate.matchingTextSnippet }}"
+              "{{ candidate.snippet }}"
             </div>
           </div>
         </div>

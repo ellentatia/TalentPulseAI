@@ -8,7 +8,7 @@ export interface CandidateMatch {
   fullName: string;
   email: string;
   matchScore: number;
-  matchingTextSnippet: string;
+  snippet: string;
 }
 
 export interface BatchJobStatus {

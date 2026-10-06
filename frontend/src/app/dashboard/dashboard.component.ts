@@ -31,6 +31,8 @@ export class DashboardComponent implements OnInit {
   public selectedResume: File | null = null;
   public uploadMessage = '';
   public isUploading = false;
+  public readonly isSearchingMatches = signal(false);
+  public readonly matchMessage = signal('');
 
   private matchesSubject = new BehaviorSubject<CandidateMatch[]>([]);
   public matches$ = this.matchesSubject.asObservable();
@@ -130,9 +132,21 @@ export class DashboardComponent implements OnInit {
     const jobId = this.jobId.value.trim();
     if (!jobId) return;
 
+    this.isSearchingMatches.set(true);
+    this.matchMessage.set('');
     this.jobService.getCandidateMatches(jobId, this.topK).subscribe({
-      next: (results) => this.matchesSubject.next(results),
-        error: (err) => console.error('Error fetching candidate matches:', err)
+      next: (results) => {
+        this.matchesSubject.next(results);
+        this.matchMessage.set(results.length === 0
+          ? 'No candidates met the current similarity threshold. Similarity is a discovery aid, not a hiring decision.'
+          : `${results.length} candidate${results.length === 1 ? '' : 's'} found. Review the resume evidence before making a decision.`);
+      },
+      error: () => {
+        this.matchesSubject.next([]);
+        this.matchMessage.set('Unable to fetch matches. Check that the backend is running and try again.');
+        this.isSearchingMatches.set(false);
+      },
+      complete: () => this.isSearchingMatches.set(false)
     });
   }
 
