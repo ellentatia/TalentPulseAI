@@ -7,9 +7,12 @@
 - Java 25
 - Node.js and npm
 
-The Go runner starts the PostgreSQL and Keycloak Compose services, waits for
-PostgreSQL, and passes the database password from `docker/.env` to the backend.
-It does not print the password.
+The Go runner checks that the Docker daemon is available before starting the
+PostgreSQL and Keycloak Compose services. On Windows, it starts Docker Desktop
+if needed and waits for the daemon to become ready. On other operating systems,
+start Docker Desktop or the Docker Engine yourself first. The runner then waits
+for PostgreSQL and passes the database password from `docker/.env` to the
+backend; it does not print the password.
 
 ## Configure local environment
 

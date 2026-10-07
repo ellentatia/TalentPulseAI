@@ -1,4 +1,5 @@
-// Run from the repository root with:
+// Run these commands from the repository root. On Windows, Docker Desktop is
+// started automatically if its daemon is not already available.
 //
 //	go run .\tools\verify.go
 //	go run .\tools\verify.go -mode backend
@@ -21,7 +22,11 @@ import (
 	"time"
 )
 
-const postgresStartupTimeout = 90 * time.Second
+const (
+	dockerStartupTimeout   = 2 * time.Minute
+	dockerCheckTimeout     = 5 * time.Second
+	postgresStartupTimeout = 90 * time.Second
+)
 
 func main() {
 	mode := flag.String("mode", "verify", "action to run: verify, backend, or frontend")
@@ -101,6 +106,9 @@ func prepareDatabase(dockerDirectory string, skipDocker bool) (map[string]string
 			return nil, fmt.Errorf("docker/.env must define %s", key)
 		}
 	}
+	if err := ensureDockerDaemon(); err != nil {
+		return nil, err
+	}
 	if err := run(context.Background(), dockerDirectory, nil, "docker", "compose", "--env-file", ".env", "up", "-d"); err != nil {
 		return nil, fmt.Errorf("start Docker Compose services: %w", err)
 	}
@@ -108,6 +116,55 @@ func prepareDatabase(dockerDirectory string, skipDocker bool) (map[string]string
 		return nil, err
 	}
 	return databaseEnv, nil
+}
+
+func ensureDockerDaemon() error {
+	if _, err := exec.LookPath("docker"); err != nil {
+		return fmt.Errorf("Docker CLI not found on PATH: %w", err)
+	}
+	if dockerDaemonReady() {
+		return nil
+	}
+	if runtime.GOOS != "windows" {
+		return errors.New("Docker daemon is not running; start Docker Desktop or the Docker Engine, then retry")
+	}
+
+	fmt.Println("Docker daemon is not running; starting Docker Desktop...")
+	ctx, cancel := context.WithTimeout(context.Background(), dockerStartupTimeout)
+	defer cancel()
+
+	command := exec.CommandContext(ctx, "docker", "desktop", "start")
+	command.Stdout = os.Stdout
+	command.Stderr = os.Stderr
+	if err := command.Run(); err != nil {
+		if dockerDaemonReady() {
+			return nil
+		}
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return fmt.Errorf("timed out starting Docker Desktop after %s", dockerStartupTimeout)
+		}
+		return fmt.Errorf("could not start Docker Desktop; ensure it is installed and supports `docker desktop start`: %w", err)
+	}
+
+	deadline := time.Now().Add(dockerStartupTimeout)
+	for time.Now().Before(deadline) {
+		if dockerDaemonReady() {
+			fmt.Println("Docker daemon is ready.")
+			return nil
+		}
+		time.Sleep(time.Second)
+	}
+	return fmt.Errorf("Docker Desktop was started, but the daemon did not become ready within %s", dockerStartupTimeout)
+}
+
+func dockerDaemonReady() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), dockerCheckTimeout)
+	defer cancel()
+
+	command := exec.CommandContext(ctx, "docker", "info")
+	command.Stdout = io.Discard
+	command.Stderr = io.Discard
+	return command.Run() == nil
 }
 
 func startBackend(directory string, environment map[string]string) {
